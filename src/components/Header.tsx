@@ -21,7 +21,6 @@ export const Header = () => {
 
   return (
     <header className="sticky top-0 z-40 bg-slate-900/90 backdrop-blur-xl border-b border-slate-800/80 shadow-xl shadow-slate-950/40">
-      {/* Top micro-bar with info */}
       <div className="hidden sm:block border-b border-slate-800/50 bg-slate-950/40 py-1.5 px-4 text-xs text-slate-400">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-6">
@@ -56,10 +55,8 @@ export const Header = () => {
         </div>
       </div>
 
-      {/* Main Header Row */}
       <div className="max-w-7xl mx-auto px-4 py-3 sm:py-4">
         <div className="flex items-center justify-between gap-3 sm:gap-6">
-          {/* Logo */}
           <div className="flex items-center space-x-3 shrink-0">
             <a href="#" className="group flex items-center gap-2">
               <div className="relative w-10 h-10 sm:w-11 sm:h-11 bg-gradient-to-tr from-red-600 to-red-500 rounded-2xl flex items-center justify-center shadow-lg shadow-red-500/30 group-hover:scale-105 transition-transform duration-300">
@@ -71,7 +68,7 @@ export const Header = () => {
               </div>
               <div className="flex flex-col">
                 <span className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center">
-                  СУШИ<span className="text-red-500 drop-shadow-[0_0_12px_rgba(239,68,68,0.7)]">МИН</span>
+                  СУШИ<span className="text-red-500 drop-shadow-[0_0_12px_rgba(239,68,68,0.7)]">НИН</span>
                 </span>
                 <span className="text-[10px] text-slate-400 -mt-1 font-medium tracking-widest uppercase">
                   г. Заволжье
@@ -79,7 +76,6 @@ export const Header = () => {
               </div>
             </a>
 
-            {/* District Pill Button */}
             <button
               onClick={openDistrictModal}
               className="hidden lg:flex items-center space-x-2 bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 hover:border-red-500/50 px-3.5 py-2 rounded-2xl text-xs font-semibold text-slate-200 transition shadow-sm group"
@@ -92,7 +88,6 @@ export const Header = () => {
             </button>
           </div>
 
-          {/* Live Search Input */}
           <div className="flex-1 max-w-md relative hidden md:block">
             <div className="relative flex items-center">
               <Search className="absolute left-3.5 w-4 h-4 text-slate-400 pointer-events-none" />
@@ -114,7 +109,6 @@ export const Header = () => {
             </div>
           </div>
 
-          {/* District selector on mobile/tablet */}
           <button
             onClick={openDistrictModal}
             className="lg:hidden flex items-center space-x-1.5 bg-slate-800/90 border border-slate-700 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-200"
@@ -123,16 +117,14 @@ export const Header = () => {
             <span className="max-w-[80px] truncate">{district?.name || 'Заволжье'}</span>
           </button>
 
-          {/* Phone call button on mobile */}
           <a
             href="tel:+79308184040"
             className="sm:hidden p-2 bg-slate-800 border border-slate-700 rounded-xl text-red-400 hover:bg-slate-700"
-            aria-label="Позвонить в СушиМин"
+            aria-label="Позвонить в СушиНин"
           >
             <Phone className="w-4 h-4" />
           </a>
 
-          {/* Desktop Cart Button */}
           <button
             onClick={() => setCartOpen(true)}
             className="relative hidden sm:flex items-center space-x-3 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-600 text-white font-bold px-5 py-2.5 rounded-2xl shadow-lg shadow-red-500/25 transition-all duration-200 active:scale-95 group"
@@ -152,7 +144,6 @@ export const Header = () => {
           </button>
         </div>
 
-        {/* Mobile Search Input */}
         <div className="mt-3 md:hidden">
           <div className="relative flex items-center">
             <Search className="absolute left-3 w-4 h-4 text-slate-400" />

@@ -10,14 +10,13 @@ export const Footer = () => {
   return (
     <footer className="bg-slate-950 border-t border-slate-800 text-slate-400 mt-20 pt-12 pb-24 sm:pb-12">
       <div className="max-w-7xl mx-auto px-4 grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
-        {/* Col 1: Brand Info */}
         <div className="space-y-4 md:col-span-1">
           <div className="flex items-center space-x-3">
             <div className="w-9 h-9 bg-gradient-to-tr from-red-600 to-red-500 rounded-2xl flex items-center justify-center shadow-lg shadow-red-500/30">
               <Flame className="w-5 h-5 text-white" />
             </div>
             <span className="text-xl font-black text-white">
-              СУШИ<span className="text-red-500">МИН</span>
+              СУШИ<span className="text-red-500">НИН</span>
             </span>
           </div>
           <p className="text-xs text-slate-400 leading-relaxed">
@@ -29,41 +28,19 @@ export const Footer = () => {
           </div>
         </div>
 
-        {/* Col 2: Districts */}
         <div>
           <h4 className="text-sm font-extrabold text-slate-100 uppercase tracking-wider mb-4">
             Зона доставки
           </h4>
           <ul className="space-y-2 text-xs">
-            <li>
-              <button onClick={openDistrictModal} className="hover:text-red-400 transition text-left">
-                📍 Заволжье (бесплатно от 700 ₽)
-              </button>
-            </li>
-            <li>
-              <button onClick={openDistrictModal} className="hover:text-red-400 transition text-left">
-                📍 Финский посёлок (бесплатно от 700 ₽)
-              </button>
-            </li>
-            <li>
-              <button onClick={openDistrictModal} className="hover:text-red-400 transition text-left">
-                📍 10-й посёлок (бесплатно от 700 ₽)
-              </button>
-            </li>
-            <li>
-              <button onClick={openDistrictModal} className="hover:text-red-400 transition text-left">
-                📍 Ясная поляна (бесплатно от 900 ₽)
-              </button>
-            </li>
-            <li>
-              <button onClick={openDistrictModal} className="hover:text-red-400 transition text-left">
-                📍 Шеляухово (бесплатно от 1200 ₽)
-              </button>
-            </li>
+            <li><button onClick={openDistrictModal} className="hover:text-red-400 transition text-left">📍 Заволжье (бесплатно от 700 ₽)</button></li>
+            <li><button onClick={openDistrictModal} className="hover:text-red-400 transition text-left">📍 Финский посёлок (бесплатно от 700 ₽)</button></li>
+            <li><button onClick={openDistrictModal} className="hover:text-red-400 transition text-left">📍 10-й посёлок (бесплатно от 700 ₽)</button></li>
+            <li><button onClick={openDistrictModal} className="hover:text-red-400 transition text-left">📍 Ясная поляна (бесплатно от 900 ₽)</button></li>
+            <li><button onClick={openDistrictModal} className="hover:text-red-400 transition text-left">📍 Шеляухово (бесплатно от 1200 ₽)</button></li>
           </ul>
         </div>
 
-        {/* Col 3: Hours & Contact */}
         <div>
           <h4 className="text-sm font-extrabold text-slate-100 uppercase tracking-wider mb-4">
             Контакты и график
@@ -76,7 +53,6 @@ export const Footer = () => {
                 <span>11:00 — 22:40</span>
               </div>
             </div>
-
             <div className="flex items-start space-x-2">
               <Phone className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
               <div>
@@ -89,7 +65,6 @@ export const Footer = () => {
           </div>
         </div>
 
-        {/* Col 4: Quick Actions */}
         <div>
           <h4 className="text-sm font-extrabold text-slate-100 uppercase tracking-wider mb-4">
             Сервис
@@ -114,7 +89,7 @@ export const Footer = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 pt-6 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-4">
-        <span>© {new Date().getFullYear()} «СушиМин» (г. Заволжье). Все права защищены.</span>
+        <span>© {new Date().getFullYear()} «СушиНин» (г. Заволжье). Все права защищены.</span>
         <span className="flex items-center gap-1">
           Сделано с <Heart className="w-3.5 h-3.5 text-red-500 fill-red-500" /> для гурманов Заволжья
         </span>

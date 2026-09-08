@@ -4,10 +4,10 @@ import { District, DISTRICTS } from '@/data/districts';
 import { Product } from '@/data/products';
 
 export interface CartItem {
-  id: string; // unique key e.g. "pepperoni-pizza-34cm"
+  id: string;
   productId: string;
   title: string;
-  variant?: string; // e.g. "34 см" or "40 см"
+  variant?: string;
   price: number;
   weight: string;
   quantity: number;
@@ -22,14 +22,12 @@ export interface AppliedPromo {
 }
 
 interface AppState {
-  // District state
   district: District | null;
   isDistrictModalOpen: boolean;
   setDistrict: (district: District) => void;
   openDistrictModal: () => void;
   closeDistrictModal: () => void;
 
-  // Cart state
   cart: CartItem[];
   isCartOpen: boolean;
   isCheckoutOpen: boolean;
@@ -43,19 +41,16 @@ interface AppState {
   applyPromoCode: (code: string) => { success: boolean; message: string };
   removePromoCode: () => void;
 
-  // Search & Filter state
   searchQuery: string;
   selectedCategory: string;
-  activeFilter: string; // 'all' | 'hit' | 'spicy' | 'baked' | 'nomeat'
+  activeFilter: string;
   setSearchQuery: (query: string) => void;
   setSelectedCategory: (category: string) => void;
   setActiveFilter: (filter: string) => void;
 
-  // Modal Detail state
   selectedProductForModal: Product | null;
   setSelectedProductForModal: (product: Product | null) => void;
 
-  // Order tracking
   activeOrder: any | null;
   setActiveOrder: (order: any | null) => void;
   isOrderTrackerOpen: boolean;
@@ -65,14 +60,12 @@ interface AppState {
 export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
-      // District defaults to Zavolzhye if not explicitly set
       district: DISTRICTS[0],
       isDistrictModalOpen: false,
       setDistrict: (district) => set({ district, isDistrictModalOpen: false }),
       openDistrictModal: () => set({ isDistrictModalOpen: true }),
       closeDistrictModal: () => set({ isDistrictModalOpen: false }),
 
-      // Cart
       cart: [],
       isCartOpen: false,
       isCheckoutOpen: false,
@@ -138,10 +131,10 @@ export const useStore = create<AppState>()(
 
       applyPromoCode: (code) => {
         const upperCode = code.trim().toUpperCase();
-        if (upperCode === 'SUSHIMIN10') {
-          const promo = { code: 'SUSHIMIN10', discountPercent: 10, description: 'Скидка 10% на ваш заказ' };
+        if (upperCode === 'SUSHININ10') {
+          const promo = { code: 'SUSHININ10', discountPercent: 10, description: 'Скидка 10% на ваш заказ' };
           set({ appliedPromo: promo });
-          return { success: true, message: 'Промокод SUSHIMIN10 применён! Скидка 10%' };
+          return { success: true, message: 'Промокод SUSHININ10 применён! Скидка 10%' };
         } else if (upperCode === 'ROLLFREE') {
           const promo = { code: 'ROLLFREE', discountPercent: 15, description: 'Скидка 15% от 2000 ₽' };
           set({ appliedPromo: promo });
@@ -156,7 +149,6 @@ export const useStore = create<AppState>()(
 
       removePromoCode: () => set({ appliedPromo: null }),
 
-      // Filters
       searchQuery: '',
       selectedCategory: 'all',
       activeFilter: 'all',
@@ -164,18 +156,16 @@ export const useStore = create<AppState>()(
       setSelectedCategory: (category) => set({ selectedCategory: category }),
       setActiveFilter: (filter) => set({ activeFilter: filter }),
 
-      // Modal Detail
       selectedProductForModal: null,
       setSelectedProductForModal: (product) => set({ selectedProductForModal: product }),
 
-      // Tracking
       activeOrder: null,
       setActiveOrder: (order) => set({ activeOrder: order }),
       isOrderTrackerOpen: false,
       setOrderTrackerOpen: (open) => set({ isOrderTrackerOpen: open }),
     }),
     {
-      name: 'sushimin_storage',
+      name: 'sushinin_storage',
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         district: state.district,

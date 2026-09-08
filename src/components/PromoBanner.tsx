@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useStore } from '@/store/useStore';
-import { Sparkles, Gift, Tag, ArrowRight, ShieldCheck, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Sparkles, Tag, ArrowRight } from 'lucide-react';
 
 export const PromoBanner = () => {
   const { applyPromoCode, district } = useStore();
@@ -12,7 +12,7 @@ export const PromoBanner = () => {
     {
       id: 1,
       title: "Скидка 10% на первый заказ!",
-      code: "SUSHIMIN10",
+      code: "SUSHININ10",
       subtitle: "Вводите промокод при оформлении корзины",
       badge: "ПРОМОКОД",
       bgGradient: "from-red-900/60 via-slate-900 to-slate-900",
@@ -53,9 +53,7 @@ export const PromoBanner = () => {
             key={p.id}
             className={`relative overflow-hidden bg-gradient-to-r ${p.bgGradient} border border-slate-800 rounded-2xl p-5 shadow-lg group hover:border-slate-700 transition duration-300`}
           >
-            {/* Background glowing circle */}
             <div className="absolute -right-8 -bottom-8 w-32 h-32 bg-red-500/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-500" />
-
             <div className="relative z-10 flex flex-col justify-between h-full space-y-4">
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -64,12 +62,9 @@ export const PromoBanner = () => {
                   </span>
                   <Sparkles className="w-4 h-4 text-slate-500 group-hover:text-red-400 transition" />
                 </div>
-                <h3 className="text-lg font-black text-slate-100 tracking-tight leading-snug">
-                  {p.title}
-                </h3>
+                <h3 className="text-lg font-black text-slate-100 tracking-tight leading-snug">{p.title}</h3>
                 <p className="text-xs text-slate-400 mt-1">{p.subtitle}</p>
               </div>
-
               <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
                 <button
                   onClick={() => handleCopyCode(p.code)}
@@ -81,7 +76,6 @@ export const PromoBanner = () => {
                     <span className="text-[10px] text-emerald-400 font-normal">Применён!</span>
                   )}
                 </button>
-
                 <span className="text-xs font-semibold text-sky-400 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
                   Применить <ArrowRight className="w-3 h-3" />
                 </span>
