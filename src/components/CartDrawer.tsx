@@ -79,7 +79,7 @@ export const CartDrawer = () => {
         ai_image_prompt: '',
         tags: [],
         hasVariants: false,
-        price40cm: null,
+        price40cm: undefined,
       },
       undefined,
       0
