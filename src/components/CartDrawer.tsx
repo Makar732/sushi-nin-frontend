@@ -2,8 +2,11 @@
 
 import React, { useState } from 'react';
 import { useStore } from '@/store/useStore';
-import { X, Trash2, Plus, Minus, ShoppingBag, Truck, Tag, ArrowRight, Sparkles, AlertCircle } from 'lucide-react';
+import { X, Trash2, Plus, Minus, ShoppingBag, Truck, Tag, ArrowRight, Sparkles, AlertCircle, Gift } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+
+const FREE_DELIVERY_THRESHOLD = 700;
+const GIFT_THRESHOLD = 2000;
 
 export const CartDrawer = () => {
   const {
@@ -25,12 +28,14 @@ export const CartDrawer = () => {
   if (!isCartOpen) return null;
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const freeThreshold = district?.freeThreshold || 700;
+  const freeThreshold = district?.freeThreshold || FREE_DELIVERY_THRESHOLD;
+  const deliveryFee = subtotal >= freeThreshold ? 0 : (district?.deliveryFee || 100);
   const remainingForFree = Math.max(0, freeThreshold - subtotal);
   const progressPercent = Math.min(100, Math.round((subtotal / freeThreshold) * 100));
+  const giftUnlocked = subtotal >= GIFT_THRESHOLD;
+  const remainingForGift = Math.max(0, GIFT_THRESHOLD - subtotal);
 
   const discountAmount = appliedPromo ? Math.round((subtotal * appliedPromo.discountPercent) / 100) : 0;
-  const deliveryFee = subtotal >= freeThreshold ? 0 : (district?.deliveryFee || 100);
   const totalAmount = subtotal - discountAmount + deliveryFee;
 
   const handleApplyPromo = (e: React.FormEvent) => {
@@ -53,7 +58,6 @@ export const CartDrawer = () => {
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-50 overflow-hidden">
-        {/* Backdrop */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -83,24 +87,21 @@ export const CartDrawer = () => {
                   </p>
                 </div>
               </div>
-
-              <button
-                onClick={() => setCartOpen(false)}
-                className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition"
-              >
+              <button onClick={() => setCartOpen(false)} className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Free Delivery Bar */}
-            <div className="px-6 py-3 bg-slate-950/60 border-b border-slate-800/80">
-              <div className="flex items-center justify-between text-xs font-semibold mb-1.5">
+            {/* Прогресс-бар доставки */}
+            <div className="px-6 py-3 bg-slate-950/60 border-b border-slate-800/80 space-y-2">
+              {/* До бесплатной доставки */}
+              <div className="flex items-center justify-between text-xs font-semibold mb-1">
                 <span className="flex items-center gap-1.5 text-slate-300">
                   <Truck className="w-4 h-4 text-sky-400" />
-                  До бесплатной доставки:
+                  {remainingForFree === 0 ? 'Доставка бесплатна!' : `До бесплатной доставки:`}
                 </span>
                 <span className={remainingForFree === 0 ? 'text-emerald-400 font-black' : 'text-red-400 font-black'}>
-                  {remainingForFree === 0 ? 'Бесплатно!' : `Ещё ${remainingForFree} ₽`}
+                  {remainingForFree === 0 ? '✓ Бесплатно' : `Ещё ${remainingForFree} ₽`}
                 </span>
               </div>
               <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
@@ -109,9 +110,27 @@ export const CartDrawer = () => {
                   style={{ width: `${progressPercent}%` }}
                 />
               </div>
+
+              {/* Плата за доставку (если не достигнут порог) */}
+              {remainingForFree > 0 && (
+                <p className="text-[11px] text-slate-500">
+                  Стоимость доставки: <span className="text-red-400 font-bold">{district?.deliveryFee || 100} ₽</span>
+                </p>
+              )}
+
+              {/* Подарок от 2000 ₽ */}
+              <div className={`flex items-center justify-between text-xs font-semibold pt-1 ${giftUnlocked ? 'text-amber-400' : 'text-slate-500'}`}>
+                <span className="flex items-center gap-1.5">
+                  <Gift className="w-4 h-4" />
+                  {giftUnlocked ? '🎁 Подарок разблокирован!' : `Подарок от ${GIFT_THRESHOLD} ₽`}
+                </span>
+                {!giftUnlocked && (
+                  <span className="text-slate-500">Ещё {remainingForGift} ₽</span>
+                )}
+              </div>
             </div>
 
-            {/* Cart Items List */}
+            {/* Список товаров */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
               {cart.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center py-12">
@@ -125,57 +144,33 @@ export const CartDrawer = () => {
                 </div>
               ) : (
                 cart.map((item) => (
-                  <div
-                    key={item.id}
-                    className="p-3 bg-slate-800/60 border border-slate-700/60 rounded-2xl flex items-center space-x-3 group hover:border-slate-600 transition"
-                  >
+                  <div key={item.id} className="p-3 bg-slate-800/60 border border-slate-700/60 rounded-2xl flex items-center space-x-3 group hover:border-slate-600 transition">
                     <img
                       src={item.image}
                       alt={item.title}
                       className="w-16 h-16 rounded-xl object-cover bg-slate-950 shrink-0"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&w=800&q=80';
-                      }}
+                      onError={(e) => { (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&w=800&q=80'; }}
                     />
-
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between">
-                        <h4 className="text-sm font-bold text-slate-100 truncate">
-                          {item.title}
-                        </h4>
-                        <button
-                          onClick={() => removeFromCart(item.id)}
-                          className="text-slate-500 hover:text-red-400 p-1 transition"
-                        >
+                        <h4 className="text-sm font-bold text-slate-100 truncate">{item.title}</h4>
+                        <button onClick={() => removeFromCart(item.id)} className="text-slate-500 hover:text-red-400 p-1 transition">
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
-
                       {item.variant && (
                         <span className="text-[11px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded-md font-medium border border-red-500/30">
                           {item.variant}
                         </span>
                       )}
-
                       <div className="flex items-center justify-between mt-2">
-                        <span className="text-sm font-extrabold text-slate-100">
-                          {item.price * item.quantity} ₽
-                        </span>
-
+                        <span className="text-sm font-extrabold text-slate-100">{item.price * item.quantity} ₽</span>
                         <div className="flex items-center space-x-1.5 bg-slate-900 border border-slate-700 p-1 rounded-xl">
-                          <button
-                            onClick={() => updateQuantity(item.id, -1)}
-                            className="w-6 h-6 rounded-lg bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center"
-                          >
+                          <button onClick={() => updateQuantity(item.id, -1)} className="w-6 h-6 rounded-lg bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center">
                             <Minus className="w-3 h-3" />
                           </button>
-                          <span className="text-xs font-black text-white px-1.5">
-                            {item.quantity}
-                          </span>
-                          <button
-                            onClick={() => updateQuantity(item.id, 1)}
-                            className="w-6 h-6 rounded-lg bg-red-600 hover:bg-red-500 text-white flex items-center justify-center"
-                          >
+                          <span className="text-xs font-black text-white px-1.5">{item.quantity}</span>
+                          <button onClick={() => updateQuantity(item.id, 1)} className="w-6 h-6 rounded-lg bg-red-600 hover:bg-red-500 text-white flex items-center justify-center">
                             <Plus className="w-3 h-3" />
                           </button>
                         </div>
@@ -186,25 +181,21 @@ export const CartDrawer = () => {
               )}
             </div>
 
-            {/* Promo Code & Order Summary */}
+            {/* Промокод + итог */}
             {cart.length > 0 && (
               <div className="p-6 border-t border-slate-800 bg-slate-900/95 space-y-4">
-                {/* Promo Code Box */}
                 {appliedPromo ? (
                   <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-between">
                     <div className="flex items-center space-x-2">
                       <Tag className="w-4 h-4 text-emerald-400" />
                       <div>
                         <span className="text-xs font-bold text-emerald-300">
-                          Промокод {appliedPromo.code} (-{appliedPromo.discountPercent}%)
+                          {appliedPromo.code} (-{appliedPromo.discountPercent}%)
                         </span>
                         <p className="text-[10px] text-emerald-400/80">{appliedPromo.description}</p>
                       </div>
                     </div>
-                    <button
-                      onClick={removePromoCode}
-                      className="text-xs text-slate-400 hover:text-red-400 underline"
-                    >
+                    <button onClick={removePromoCode} className="text-xs text-slate-400 hover:text-red-400 underline">
                       Отмена
                     </button>
                   </div>
@@ -214,14 +205,11 @@ export const CartDrawer = () => {
                       <input
                         type="text"
                         value={promoInput}
-                        onChange={(e) => setPromoInput(e.target.value)}
-                        placeholder="Промокод (SUSHIMIN10)"
+                        onChange={(e) => { setPromoInput(e.target.value.toUpperCase()); setPromoError(''); }}
+                        placeholder="Промокод (SUSHININ10)"
                         className="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-red-500"
                       />
-                      <button
-                        type="submit"
-                        className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition"
-                      >
+                      <button type="submit" className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition">
                         Ввод
                       </button>
                     </div>
@@ -233,7 +221,6 @@ export const CartDrawer = () => {
                   </form>
                 )}
 
-                {/* Receipt Breakdown */}
                 <div className="space-y-1.5 text-xs text-slate-300">
                   <div className="flex justify-between">
                     <span>Сумма заказа:</span>
@@ -251,17 +238,20 @@ export const CartDrawer = () => {
                       {deliveryFee === 0 ? 'БЕСПЛАТНО' : `${deliveryFee} ₽`}
                     </span>
                   </div>
-
+                  {giftUnlocked && (
+                    <div className="flex justify-between text-amber-400 font-semibold">
+                      <span>🎁 Подарок к заказу:</span>
+                      <span>Включён</span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-baseline pt-3 border-t border-slate-800 text-base font-black text-slate-50">
                     <span>ИТОГО К ОПЛАТЕ:</span>
                     <span className="text-xl text-red-500">{totalAmount} ₽</span>
                   </div>
                 </div>
 
-                <button
-                  onClick={handleOpenCheckout}
-                  className="w-full py-4 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-600 text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-red-500/25 flex items-center justify-center space-x-2 active:scale-95 transition"
-                >
+                <button onClick={handleOpenCheckout}
+                  className="w-full py-4 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-600 text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-red-500/25 flex items-center justify-center space-x-2 active:scale-95 transition">
                   <span>Оформить заказ</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
