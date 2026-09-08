@@ -9,13 +9,14 @@ import { CartDrawer } from '@/components/CartDrawer';
 import { CheckoutModal } from '@/components/CheckoutModal';
 import { OrderTrackerModal } from '@/components/OrderTrackerModal';
 import { MobileCartBar } from '@/components/MobileCartBar';
+import { MobileOrderBanner } from '@/components/MobileOrderBanner';
 import { Footer } from '@/components/Footer';
 import { PRODUCTS } from '@/data/products';
 import { db } from '@/db';
 import { products } from '@/db/schema';
 import { seedDatabase } from '@/db/seed';
 
-export const revalidate = 0; // Dynamic server rendering
+export const revalidate = 0;
 
 async function getProducts() {
   try {
@@ -61,6 +62,9 @@ export default async function HomePage() {
     <div className="min-h-screen bg-slate-900 text-slate-100 selection:bg-red-500 selection:text-white font-sans antialiased">
       {/* Sticky Header */}
       <Header />
+
+      {/* Мобильная плашка активного заказа (под шапкой) */}
+      <MobileOrderBanner />
 
       {/* Hero / Promotional Banners */}
       <PromoBanner />

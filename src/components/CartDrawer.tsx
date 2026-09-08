@@ -2,11 +2,17 @@
 
 import React, { useState } from 'react';
 import { useStore } from '@/store/useStore';
-import { X, Trash2, Plus, Minus, ShoppingBag, Truck, Tag, ArrowRight, Sparkles, AlertCircle, Gift } from 'lucide-react';
+import { X, Trash2, Plus, Minus, ShoppingBag, Truck, Tag, ArrowRight, Sparkles, AlertCircle, Gift, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const FREE_DELIVERY_THRESHOLD = 700;
 const GIFT_THRESHOLD = 2000;
+
+const GIFT_OPTIONS = [
+  { id: 'gift-california', title: 'Ролл «Калифорния»', emoji: '🍣', description: '8 шт. в подарок' },
+  { id: 'gift-mors', title: 'Морс 0.5л', emoji: '🧃', description: 'Клюквенный морс' },
+  { id: 'gift-cheesecake', title: 'Чизкейк', emoji: '🍰', description: 'Классический чизкейк' },
+];
 
 export const CartDrawer = () => {
   const {
@@ -19,11 +25,13 @@ export const CartDrawer = () => {
     appliedPromo,
     applyPromoCode,
     removePromoCode,
-    setCheckoutOpen
+    setCheckoutOpen,
+    addToCart,
   } = useStore();
 
   const [promoInput, setPromoInput] = useState('');
   const [promoError, setPromoError] = useState('');
+  const [selectedGiftId, setSelectedGiftId] = useState<string | null>(null);
 
   if (!isCartOpen) return null;
 
@@ -50,6 +58,34 @@ export const CartDrawer = () => {
     }
   };
 
+  const handleSelectGift = (gift: typeof GIFT_OPTIONS[0]) => {
+    // Убираем предыдущий подарок из корзины
+    if (selectedGiftId) {
+      removeFromCart(selectedGiftId);
+    }
+    setSelectedGiftId(gift.id);
+    // Добавляем подарок как товар с ценой 0
+    addToCart(
+      {
+        id: gift.id,
+        title: `🎁 ${gift.title}`,
+        category: 'Подарок',
+        description: gift.description,
+        price: 0,
+        weight: '',
+        in_stock: true,
+        image_filename: '',
+        imageUrl: '',
+        ai_image_prompt: '',
+        tags: [],
+        hasVariants: false,
+        price40cm: null,
+      },
+      undefined,
+      0
+    );
+  };
+
   const handleOpenCheckout = () => {
     setCartOpen(false);
     setCheckoutOpen(true);
@@ -66,16 +102,16 @@ export const CartDrawer = () => {
           className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"
         />
 
-        <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
+        <div className="fixed inset-y-0 right-0 max-w-full flex pl-0 sm:pl-10">
           <motion.div
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="w-screen max-w-md bg-slate-900 border-l border-slate-800 shadow-2xl flex flex-col justify-between"
+            className="w-screen max-w-md bg-slate-900 border-l border-slate-800 shadow-2xl flex flex-col"
           >
             {/* Header */}
-            <div className="p-6 border-b border-slate-800 bg-slate-900/90 flex items-center justify-between">
+            <div className="p-4 sm:p-6 border-b border-slate-800 bg-slate-900/90 flex items-center justify-between shrink-0">
               <div className="flex items-center space-x-3">
                 <div className="p-2.5 bg-red-500/10 border border-red-500/30 rounded-2xl text-red-400">
                   <ShoppingBag className="w-5 h-5" />
@@ -92,13 +128,12 @@ export const CartDrawer = () => {
               </button>
             </div>
 
-            {/* Прогресс-бар доставки */}
-            <div className="px-6 py-3 bg-slate-950/60 border-b border-slate-800/80 space-y-2">
-              {/* До бесплатной доставки */}
+            {/* Прогресс-бар */}
+            <div className="px-4 sm:px-6 py-3 bg-slate-950/60 border-b border-slate-800/80 space-y-2 shrink-0">
               <div className="flex items-center justify-between text-xs font-semibold mb-1">
                 <span className="flex items-center gap-1.5 text-slate-300">
                   <Truck className="w-4 h-4 text-sky-400" />
-                  {remainingForFree === 0 ? 'Доставка бесплатна!' : `До бесплатной доставки:`}
+                  {remainingForFree === 0 ? 'Доставка бесплатна!' : 'До бесплатной доставки:'}
                 </span>
                 <span className={remainingForFree === 0 ? 'text-emerald-400 font-black' : 'text-red-400 font-black'}>
                   {remainingForFree === 0 ? '✓ Бесплатно' : `Ещё ${remainingForFree} ₽`}
@@ -110,28 +145,57 @@ export const CartDrawer = () => {
                   style={{ width: `${progressPercent}%` }}
                 />
               </div>
-
-              {/* Плата за доставку (если не достигнут порог) */}
               {remainingForFree > 0 && (
                 <p className="text-[11px] text-slate-500">
                   Стоимость доставки: <span className="text-red-400 font-bold">{district?.deliveryFee || 100} ₽</span>
                 </p>
               )}
-
-              {/* Подарок от 2000 ₽ */}
               <div className={`flex items-center justify-between text-xs font-semibold pt-1 ${giftUnlocked ? 'text-amber-400' : 'text-slate-500'}`}>
                 <span className="flex items-center gap-1.5">
                   <Gift className="w-4 h-4" />
-                  {giftUnlocked ? '🎁 Подарок разблокирован!' : `Подарок от ${GIFT_THRESHOLD} ₽`}
+                  {giftUnlocked ? '🎁 Выберите подарок!' : `Подарок от ${GIFT_THRESHOLD} ₽`}
                 </span>
-                {!giftUnlocked && (
-                  <span className="text-slate-500">Ещё {remainingForGift} ₽</span>
-                )}
+                {!giftUnlocked && <span className="text-slate-500">Ещё {remainingForGift} ₽</span>}
               </div>
+
+              {/* Выбор подарка */}
+              <AnimatePresence>
+                {giftUnlocked && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="grid grid-cols-3 gap-2 pt-1"
+                  >
+                    {GIFT_OPTIONS.map((gift) => {
+                      const isChosen = selectedGiftId === gift.id;
+                      return (
+                        <button
+                          key={gift.id}
+                          onClick={() => handleSelectGift(gift)}
+                          className={`relative flex flex-col items-center p-2 rounded-xl border text-center transition ${
+                            isChosen
+                              ? 'bg-amber-500/20 border-amber-400 text-amber-300'
+                              : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:border-amber-500/50'
+                          }`}
+                        >
+                          {isChosen && (
+                            <span className="absolute top-1 right-1 w-4 h-4 bg-amber-400 rounded-full flex items-center justify-center">
+                              <Check className="w-2.5 h-2.5 text-slate-900" />
+                            </span>
+                          )}
+                          <span className="text-xl mb-1">{gift.emoji}</span>
+                          <span className="text-[10px] font-bold leading-tight">{gift.title}</span>
+                        </button>
+                      );
+                    })}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* Список товаров */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3">
               {cart.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center py-12">
                   <div className="p-4 bg-slate-800/60 rounded-full text-slate-500 mb-4 border border-slate-700">
@@ -148,13 +212,15 @@ export const CartDrawer = () => {
                     <img
                       src={item.image}
                       alt={item.title}
-                      className="w-16 h-16 rounded-xl object-cover bg-slate-950 shrink-0"
-                      onError={(e) => { (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&w=800&q=80'; }}
+                      className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl object-cover bg-slate-950 shrink-0"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&w=800&q=80';
+                      }}
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between">
                         <h4 className="text-sm font-bold text-slate-100 truncate">{item.title}</h4>
-                        <button onClick={() => removeFromCart(item.id)} className="text-slate-500 hover:text-red-400 p-1 transition">
+                        <button onClick={() => removeFromCart(item.id)} className="text-slate-500 hover:text-red-400 p-1 transition shrink-0">
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
@@ -164,16 +230,20 @@ export const CartDrawer = () => {
                         </span>
                       )}
                       <div className="flex items-center justify-between mt-2">
-                        <span className="text-sm font-extrabold text-slate-100">{item.price * item.quantity} ₽</span>
-                        <div className="flex items-center space-x-1.5 bg-slate-900 border border-slate-700 p-1 rounded-xl">
-                          <button onClick={() => updateQuantity(item.id, -1)} className="w-6 h-6 rounded-lg bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center">
-                            <Minus className="w-3 h-3" />
-                          </button>
-                          <span className="text-xs font-black text-white px-1.5">{item.quantity}</span>
-                          <button onClick={() => updateQuantity(item.id, 1)} className="w-6 h-6 rounded-lg bg-red-600 hover:bg-red-500 text-white flex items-center justify-center">
-                            <Plus className="w-3 h-3" />
-                          </button>
-                        </div>
+                        <span className="text-sm font-extrabold text-slate-100">
+                          {item.price === 0 ? <span className="text-amber-400">БЕСПЛАТНО</span> : `${item.price * item.quantity} ₽`}
+                        </span>
+                        {item.price > 0 && (
+                          <div className="flex items-center space-x-1.5 bg-slate-900 border border-slate-700 p-1 rounded-xl">
+                            <button onClick={() => updateQuantity(item.id, -1)} className="w-6 h-6 rounded-lg bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center">
+                              <Minus className="w-3 h-3" />
+                            </button>
+                            <span className="text-xs font-black text-white px-1.5">{item.quantity}</span>
+                            <button onClick={() => updateQuantity(item.id, 1)} className="w-6 h-6 rounded-lg bg-red-600 hover:bg-red-500 text-white flex items-center justify-center">
+                              <Plus className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -183,21 +253,17 @@ export const CartDrawer = () => {
 
             {/* Промокод + итог */}
             {cart.length > 0 && (
-              <div className="p-6 border-t border-slate-800 bg-slate-900/95 space-y-4">
+              <div className="p-4 sm:p-6 border-t border-slate-800 bg-slate-900/95 space-y-4 shrink-0">
                 {appliedPromo ? (
                   <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-between">
                     <div className="flex items-center space-x-2">
                       <Tag className="w-4 h-4 text-emerald-400" />
                       <div>
-                        <span className="text-xs font-bold text-emerald-300">
-                          {appliedPromo.code} (-{appliedPromo.discountPercent}%)
-                        </span>
+                        <span className="text-xs font-bold text-emerald-300">{appliedPromo.code} (-{appliedPromo.discountPercent}%)</span>
                         <p className="text-[10px] text-emerald-400/80">{appliedPromo.description}</p>
                       </div>
                     </div>
-                    <button onClick={removePromoCode} className="text-xs text-slate-400 hover:text-red-400 underline">
-                      Отмена
-                    </button>
+                    <button onClick={removePromoCode} className="text-xs text-slate-400 hover:text-red-400 underline">Отмена</button>
                   </div>
                 ) : (
                   <form onSubmit={handleApplyPromo} className="space-y-1">
@@ -238,10 +304,10 @@ export const CartDrawer = () => {
                       {deliveryFee === 0 ? 'БЕСПЛАТНО' : `${deliveryFee} ₽`}
                     </span>
                   </div>
-                  {giftUnlocked && (
+                  {giftUnlocked && selectedGiftId && (
                     <div className="flex justify-between text-amber-400 font-semibold">
-                      <span>🎁 Подарок к заказу:</span>
-                      <span>Включён</span>
+                      <span>🎁 Подарок:</span>
+                      <span>0 ₽</span>
                     </div>
                   )}
                   <div className="flex justify-between items-baseline pt-3 border-t border-slate-800 text-base font-black text-slate-50">
@@ -250,8 +316,10 @@ export const CartDrawer = () => {
                   </div>
                 </div>
 
-                <button onClick={handleOpenCheckout}
-                  className="w-full py-4 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-600 text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-red-500/25 flex items-center justify-center space-x-2 active:scale-95 transition">
+                <button
+                  onClick={handleOpenCheckout}
+                  className="w-full py-4 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-600 text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-red-500/25 flex items-center justify-center space-x-2 active:scale-95 transition"
+                >
                   <span>Оформить заказ</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>

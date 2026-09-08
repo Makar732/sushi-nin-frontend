@@ -17,8 +17,8 @@ export const CategoryNav = () => {
   };
 
   return (
-    <div className="sticky top-[61px] sm:top-[73px] z-30 bg-slate-900/95 backdrop-blur-md border-b border-slate-800/80 py-3 px-4 shadow-md">
-      <div className="max-w-7xl mx-auto space-y-3">
+    <div className="sticky top-[105px] sm:top-[73px] z-30 bg-slate-900/95 backdrop-blur-md border-b border-slate-800/80 py-2 sm:py-3 px-4 shadow-md">
+      <div className="max-w-7xl mx-auto space-y-2 sm:space-y-3">
         {/* Categories Bar */}
         <div className="relative flex items-center">
           <button
@@ -31,18 +31,18 @@ export const CategoryNav = () => {
 
           <div
             ref={scrollRef}
-            className="flex items-center space-x-2 overflow-x-auto scrollbar-none py-1 no-scrollbar w-full"
+            className="flex items-center space-x-2 overflow-x-auto py-1 w-full"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
-            {/* "All Categories" Tab */}
             <button
               onClick={() => setSelectedCategory('all')}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-2xl text-xs sm:text-sm font-extrabold whitespace-nowrap transition-all duration-200 border shrink-0 ${
+              className={`flex items-center space-x-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-2xl text-xs font-extrabold whitespace-nowrap transition-all duration-200 border shrink-0 ${
                 selectedCategory === 'all'
                   ? 'bg-red-600 text-white border-red-500 shadow-lg shadow-red-500/25 scale-105'
                   : 'bg-slate-800/80 text-slate-300 border-slate-700/60 hover:bg-slate-800 hover:text-white'
               }`}
             >
-              <Layers className="w-4 h-4" />
+              <Layers className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span>Всё меню</span>
             </button>
 
@@ -52,13 +52,13 @@ export const CategoryNav = () => {
                 <button
                   key={cat.id}
                   onClick={() => setSelectedCategory(cat.name)}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-2xl text-xs sm:text-sm font-extrabold whitespace-nowrap transition-all duration-200 border shrink-0 ${
+                  className={`flex items-center space-x-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-2xl text-xs font-extrabold whitespace-nowrap transition-all duration-200 border shrink-0 ${
                     isActive
                       ? 'bg-red-600 text-white border-red-500 shadow-lg shadow-red-500/25 scale-105'
                       : 'bg-slate-800/80 text-slate-300 border-slate-700/60 hover:bg-slate-800 hover:text-white'
                   }`}
                 >
-                  <span className="text-base">{cat.icon}</span>
+                  <span className="text-sm">{cat.icon}</span>
                   <span>{cat.name}</span>
                 </button>
               );
@@ -74,8 +74,11 @@ export const CategoryNav = () => {
           </button>
         </div>
 
-        {/* Quick Filter Chips */}
-        <div className="flex items-center space-x-2 overflow-x-auto scrollbar-none pb-1 no-scrollbar text-xs">
+        {/* Filter Chips */}
+        <div
+          className="flex items-center space-x-2 overflow-x-auto pb-1 text-xs"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1 shrink-0">
             Фильтры:
           </span>
