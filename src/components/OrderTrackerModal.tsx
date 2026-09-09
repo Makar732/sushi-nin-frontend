@@ -22,20 +22,56 @@ export function useElapsedTime(createdAt: string | null) {
   return `${m}:${s}`;
 }
 
+const STATUS_STEPS = ['confirmed', 'cooking', 'delivering', 'completed'];
+
+const STATUS_MAP: Record<string, number> = {
+  new: 0,
+  confirmed: 0,
+  cooking: 1,
+  delivering: 2,
+  completed: 3,
+};
+
+const STEPS = [
+  { id: 'confirmed', label: 'Заказ принят', desc: 'Передан на кухню «СушиНин»', icon: CheckCircle2 },
+  { id: 'cooking', label: 'Готовится', desc: 'Шеф-повар создает ваш шедевр', icon: ChefHat },
+  { id: 'delivering', label: 'В пути', desc: 'Курьер мчит к вашему адресу', icon: Bike },
+  { id: 'completed', label: 'Доставлен', desc: 'Приятного аппетита!', icon: Home },
+];
+
 export const OrderTrackerModal = () => {
-  const { activeOrder, isOrderTrackerOpen, setOrderTrackerOpen } = useStore();
+  const { activeOrder, isOrderTrackerOpen, setOrderTrackerOpen, setActiveOrder } = useStore();
   const elapsed = useElapsedTime(activeOrder?.createdAt ?? null);
+  const [liveStatus, setLiveStatus] = useState<string>(activeOrder?.status || 'confirmed');
+
+  // Polling статуса из БД каждые 5 секунд
+  useEffect(() => {
+    if (!activeOrder?.orderNumber) return;
+
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch(
+          `/api/order/status?orderNumber=${activeOrder.orderNumber}`,
+          { cache: 'no-store' }
+        );
+        const data = await res.json();
+        if (data.success && data.status) {
+          setLiveStatus(data.status);
+          // Обновляем стор чтобы MobileOrderBanner тоже получил актуальный статус
+          setActiveOrder({ ...activeOrder, status: data.status });
+        }
+      } catch {}
+    };
+
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 5000);
+    return () => clearInterval(interval);
+  }, [activeOrder?.orderNumber]);
 
   if (!isOrderTrackerOpen || !activeOrder) return null;
 
-  const steps = [
-    { id: 'confirmed', label: 'Заказ принят', desc: 'Передан на кухню «СушиНин»', icon: CheckCircle2 },
-    { id: 'cooking', label: 'Готовится', desc: 'Шеф-повар создает ваш шедевр', icon: ChefHat },
-    { id: 'delivering', label: 'В пути', desc: 'Курьер мчит к вашему адресу', icon: Bike },
-    { id: 'completed', label: 'Доставлен', desc: 'Приятного аппетита!', icon: Home },
-  ];
-
-  const currentStepIndex = 1;
+  const currentStepIndex = STATUS_MAP[liveStatus] ?? 0;
+  const isCompleted = liveStatus === 'completed';
 
   return (
     <AnimatePresence>
@@ -87,6 +123,18 @@ export const OrderTrackerModal = () => {
               </div>
             </div>
 
+            {/* Статус-бейдж */}
+            <div className={`flex items-center justify-center gap-2 py-2 px-4 rounded-2xl border text-sm font-bold ${
+              isCompleted
+                ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+                : 'bg-sky-500/10 border-sky-500/30 text-sky-400'
+            }`}>
+              <span className="w-2 h-2 rounded-full animate-pulse inline-block" style={{
+                backgroundColor: isCompleted ? '#34d399' : '#38bdf8'
+              }} />
+              {isCompleted ? '✅ Ваш заказ доставлен!' : '🔄 Обновляется каждые 5 сек'}
+            </div>
+
             {/* Детали заказа */}
             <div className="p-4 bg-slate-950/80 rounded-2xl border border-slate-800 space-y-2 text-xs text-slate-300">
               <div className="flex justify-between gap-2">
@@ -107,25 +155,25 @@ export const OrderTrackerModal = () => {
 
             {/* Stepper */}
             <div className="relative pl-5 border-l-2 border-slate-800 space-y-4">
-              {steps.map((step, idx) => {
+              {STEPS.map((step, idx) => {
                 const Icon = step.icon;
                 const isDone = idx <= currentStepIndex;
                 const isCurrent = idx === currentStepIndex;
                 return (
                   <div key={step.id} className="relative flex items-start space-x-3">
                     <div
-                      className={`absolute -left-[27px] top-0 w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                      className={`absolute -left-[27px] top-0 w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all duration-500 ${
                         isDone
                           ? 'bg-red-600 border-red-400 text-white'
                           : 'bg-slate-900 border-slate-700 text-slate-600'
-                      }`}
+                      } ${isCurrent && !isCompleted ? 'ring-2 ring-red-500/40 ring-offset-1 ring-offset-slate-900' : ''}`}
                     >
                       <Icon className="w-3 h-3" />
                     </div>
                     <div>
                       <h4
-                        className={`font-bold leading-tight ${
-                          isCurrent
+                        className={`font-bold leading-tight transition-all duration-300 ${
+                          isCurrent && !isCompleted
                             ? 'text-red-400 text-base font-extrabold'
                             : isDone
                             ? 'text-slate-200 text-sm'
@@ -133,6 +181,11 @@ export const OrderTrackerModal = () => {
                         }`}
                       >
                         {step.label}
+                        {isCurrent && !isCompleted && (
+                          <span className="ml-2 text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded-full border border-red-500/30 font-bold animate-pulse">
+                            сейчас
+                          </span>
+                        )}
                       </h4>
                       <p className="text-xs text-slate-400 mt-0.5">{step.desc}</p>
                     </div>
@@ -140,6 +193,16 @@ export const OrderTrackerModal = () => {
                 );
               })}
             </div>
+
+            {/* Если доставлен — кнопка закрыть */}
+            {isCompleted && (
+              <button
+                onClick={() => setOrderTrackerOpen(false)}
+                className="w-full py-3 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-black rounded-2xl text-sm shadow-lg shadow-emerald-500/25 transition active:scale-95"
+              >
+                🎉 Приятного аппетита!
+              </button>
+            )}
 
             {/* Телефон */}
             <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs">
