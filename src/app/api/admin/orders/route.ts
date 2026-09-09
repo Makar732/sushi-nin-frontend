@@ -3,6 +3,9 @@ import { db } from '@/db';
 import { orders } from '@/db/schema';
 import { desc, eq } from 'drizzle-orm';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(): Promise<NextResponse> {
   try {
     const allOrders = await db
@@ -10,7 +13,14 @@ export async function GET(): Promise<NextResponse> {
       .from(orders)
       .orderBy(desc(orders.createdAt));
 
-    return NextResponse.json({ success: true, orders: allOrders });
+    return NextResponse.json(
+      { success: true, orders: allOrders },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        },
+      }
+    );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({ success: false, error: message }, { status: 500 });

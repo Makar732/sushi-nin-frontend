@@ -235,7 +235,7 @@ export default function AdminOrdersPage() {
 
   const fetchOrders = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/orders');
+      const res = await fetch('/api/admin/orders', { cache: 'no-store' });
       const data = await res.json();
       if (data.success) {
         const newOrders: Order[] = data.orders;
@@ -253,7 +253,7 @@ export default function AdminOrdersPage() {
 
   useEffect(() => {
     fetchOrders();
-    const interval = setInterval(fetchOrders, 15000);
+    const interval = setInterval(fetchOrders, 5000);
     return () => clearInterval(interval);
   }, [fetchOrders]);
 
@@ -277,7 +277,7 @@ export default function AdminOrdersPage() {
         <div>
           <h1 className="text-2xl font-black text-white">📦 Заказы</h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Обновлено: {lastRefresh.toLocaleTimeString('ru-RU')} · Автообновление каждые 15 сек
+            Обновлено: {lastRefresh.toLocaleTimeString('ru-RU')} · Автообновление каждые 5 сек
           </p>
         </div>
         <div className="flex items-center gap-2">

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { orders } from '@/db/schema';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -47,7 +49,7 @@ ${discount > 0 ? `<b>🏷️ Скидка:</b> -${discount} ₽\n` : ''}<b>💰 
 
     if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
       try {
-        const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -56,40 +58,29 @@ ${discount > 0 ? `<b>🏷️ Скидка:</b> -${discount} ₽\n` : ''}<b>💰 
             text: message,
           }),
         });
-
-        if (!res.ok) {
-          const errText = await res.text();
-          console.error('Telegram API response error:', errText);
-        }
       } catch (tgErr) {
         console.error('Telegram send fetch error:', tgErr);
       }
-    } else {
-      console.log('Telegram Bot Token/Chat ID not set. Order recorded in DB:', orderId);
     }
 
-    // Save order to database
-    try {
-      await db.insert(orders).values({
-        orderNumber: String(orderId),
-        customerName: customer.name || 'Покупатель',
-        customerPhone: customer.phone || '',
-        zone: zone || 'Заволжье',
-        deliveryType: deliveryType || 'delivery',
-        address: address || 'Самовывоз',
-        time: time || 'Ближайшее',
-        paymentMethod: paymentMethod || 'Картой курьеру',
-        items: items,
-        subtotal: totalAmount,
-        deliveryFee: deliveryFee,
-        discount: discount,
-        totalAmount: finalPay,
-        status: 'new',
-        comment: customer.comment || '',
-      });
-    } catch (dbErr) {
-      console.error('Failed to save order to Postgres:', dbErr);
-    }
+    // Save order to Postgres
+    await db.insert(orders).values({
+      orderNumber: String(orderId),
+      customerName: customer.name || 'Покупатель',
+      customerPhone: customer.phone || '',
+      zone: zone || 'Заволжье',
+      deliveryType: deliveryType || 'delivery',
+      address: address || 'Самовывоз',
+      time: time || 'Ближайшее',
+      paymentMethod: paymentMethod || 'Картой курьеру',
+      items: items,
+      subtotal: totalAmount,
+      deliveryFee: deliveryFee,
+      discount: discount,
+      totalAmount: finalPay,
+      status: 'new',
+      comment: customer.comment || '',
+    });
 
     return NextResponse.json({ success: true, orderId });
   } catch (error: any) {
