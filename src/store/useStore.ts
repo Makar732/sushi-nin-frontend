@@ -17,7 +17,8 @@ export interface CartItem {
 
 export interface AppliedPromo {
   code: string;
-  discountPercent: number;
+  discountType: 'percent' | 'fixed';
+  discountValue: number;
   description: string;
 }
 
@@ -38,7 +39,7 @@ interface AppState {
   clearCart: () => void;
   setCartOpen: (open: boolean) => void;
   setCheckoutOpen: (open: boolean) => void;
-  applyPromoCode: (code: string) => { success: boolean; message: string };
+  applyPromoCode: (code: string, subtotal: number) => Promise<{ success: boolean; message: string }>;
   removePromoCode: () => void;
 
   searchQuery: string;
@@ -129,22 +130,22 @@ export const useStore = create<AppState>()(
       setCartOpen: (open) => set({ isCartOpen: open }),
       setCheckoutOpen: (open) => set({ isCheckoutOpen: open }),
 
-      applyPromoCode: (code) => {
-        const upperCode = code.trim().toUpperCase();
-        if (upperCode === 'SUSHININ10') {
-          const promo = { code: 'SUSHININ10', discountPercent: 10, description: 'Скидка 10% на ваш заказ' };
-          set({ appliedPromo: promo });
-          return { success: true, message: 'Промокод SUSHININ10 применён! Скидка 10%' };
-        } else if (upperCode === 'ROLLFREE') {
-          const promo = { code: 'ROLLFREE', discountPercent: 15, description: 'Скидка 15% от 2000 ₽' };
-          set({ appliedPromo: promo });
-          return { success: true, message: 'Промокод ROLLFREE применён! Скидка 15%' };
-        } else if (upperCode === 'PIZZA20') {
-          const promo = { code: 'PIZZA20', discountPercent: 20, description: 'Скидка 20% от 3000 ₽' };
-          set({ appliedPromo: promo });
-          return { success: true, message: 'Промокод PIZZA20 применён! Скидка 20%' };
+      applyPromoCode: async (code, subtotal) => {
+        try {
+          const res = await fetch('/api/promotions/validate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code, subtotal }),
+          });
+          const data = await res.json();
+          if (data.success && data.promo) {
+            set({ appliedPromo: data.promo });
+            return { success: true, message: data.message || 'Промокод применён!' };
+          }
+          return { success: false, message: data.message || 'Неверный промокод' };
+        } catch {
+          return { success: false, message: 'Ошибка сети. Попробуйте позже.' };
         }
-        return { success: false, message: 'Неверный промокод' };
       },
 
       removePromoCode: () => set({ appliedPromo: null }),
@@ -167,6 +168,14 @@ export const useStore = create<AppState>()(
     {
       name: 'sushinin_storage',
       storage: createJSONStorage(() => localStorage),
+      version: 2,
+      migrate: (persistedState: any, version) => {
+        // В версии 1 appliedPromo хранил discountPercent — сбрасываем при миграции
+        if (version < 2 && persistedState) {
+          return { ...persistedState, appliedPromo: null };
+        }
+        return persistedState;
+      },
       partialize: (state) => ({
         district: state.district,
         cart: state.cart,

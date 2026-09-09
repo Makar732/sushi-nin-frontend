@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
-import { orders } from '@/db/schema';
-import { sql } from 'drizzle-orm';
+import { orders, promotions } from '@/db/schema';
+import { sql, eq } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +19,7 @@ export async function POST(req: Request) {
       deliveryType,
       address,
       time,
-      discount = 0
+      promoCode,
     } = body;
 
     const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -33,7 +33,35 @@ export async function POST(req: Request) {
 
     const subtotalNum = Math.round(Number(totalAmount) || 0);
     const deliveryFeeNum = Math.round(Number(deliveryFee) || 0);
-    const discountNum = Math.round(Number(discount) || 0);
+
+    // Серверная валидация промокода — не доверяем скидке, присланной с клиента
+    let discountNum = 0;
+    let validPromoId: string | null = null;
+    let validPromoCode: string | null = null;
+
+    if (promoCode) {
+      try {
+        const normalizedCode = String(promoCode).trim().toUpperCase();
+        const [promo] = await db.select().from(promotions).where(eq(promotions.code, normalizedCode));
+
+        if (
+          promo &&
+          promo.active &&
+          (promo.usageLimit === 0 || promo.usedCount < promo.usageLimit) &&
+          subtotalNum >= promo.minAmount
+        ) {
+          discountNum =
+            promo.discountType === 'fixed'
+              ? Math.min(promo.discountValue, subtotalNum)
+              : Math.round((subtotalNum * promo.discountValue) / 100);
+          validPromoId = promo.id;
+          validPromoCode = promo.code;
+        }
+      } catch (promoErr) {
+        console.error('Promo validation error:', promoErr);
+      }
+    }
+
     const finalPay = subtotalNum + deliveryFeeNum - discountNum;
 
     const message = `
@@ -50,7 +78,7 @@ ${customer?.comment ? `<b>💬 Комментарий:</b> ${customer.comment}\n
 ${itemsList}
 
 <b>🚚 Доставка:</b> ${deliveryFeeNum === 0 ? 'БЕСПЛАТНО' : `${deliveryFeeNum} ₽`}
-${discountNum > 0 ? `<b>🏷️ Скидка:</b> -${discountNum} ₽\n` : ''}<b>💰 ИТОГО К ОПЛАТЕ:</b> ${finalPay} ₽
+${validPromoCode ? `<b>🏷️ Промокод:</b> ${validPromoCode} (-${discountNum} ₽)\n` : ''}<b>💰 ИТОГО К ОПЛАТЕ:</b> ${finalPay} ₽
     `;
 
     if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
@@ -73,14 +101,21 @@ ${discountNum > 0 ? `<b>🏷️ Скидка:</b> -${discountNum} ₽\n` : ''}<b
     try {
       const itemsJson = JSON.stringify(safeItems);
       await db.execute(
-        sql`INSERT INTO "orders" ("order_number", "customer_name", "customer_phone", "zone", "delivery_type", "address", "time", "payment_method", "items", "subtotal", "delivery_fee", "discount", "total_amount", "status", "comment")
-            VALUES (${String(orderId)}, ${customer?.name || 'Покупатель'}, ${customer?.phone || ''}, ${String(zone || 'Заволжье')}, ${String(deliveryType || 'delivery')}, ${String(address || 'Самовывоз')}, ${String(time || 'Ближайшее')}, ${String(paymentMethod || 'Картой курьеру')}, ${itemsJson}::jsonb, ${subtotalNum}, ${deliveryFeeNum}, ${discountNum}, ${finalPay}, 'new', ${customer?.comment || ''})`
+        sql`INSERT INTO "orders" ("order_number", "customer_name", "customer_phone", "zone", "delivery_type", "address", "time", "payment_method", "items", "subtotal", "delivery_fee", "discount", "total_amount", "status", "comment", "promo_code")
+            VALUES (${String(orderId)}, ${customer?.name || 'Покупатель'}, ${customer?.phone || ''}, ${String(zone || 'Заволжье')}, ${String(deliveryType || 'delivery')}, ${String(address || 'Самовывоз')}, ${String(time || 'Ближайшее')}, ${String(paymentMethod || 'Картой курьеру')}, ${itemsJson}::jsonb, ${subtotalNum}, ${deliveryFeeNum}, ${discountNum}, ${finalPay}, 'new', ${customer?.comment || ''}, ${validPromoCode})`
       );
+
+      if (validPromoId) {
+        await db
+          .update(promotions)
+          .set({ usedCount: sql`${promotions.usedCount} + 1` })
+          .where(eq(promotions.id, validPromoId));
+      }
     } catch (dbErr) {
       console.error('Failed to save order to Postgres:', dbErr);
     }
 
-    return NextResponse.json({ success: true, orderId });
+    return NextResponse.json({ success: true, orderId, discount: discountNum, totalAmount: finalPay });
   } catch (error: any) {
     console.error('Order processing error:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

@@ -1,54 +1,59 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useStore } from '@/store/useStore';
-import { Sparkles, Tag, ArrowRight } from 'lucide-react';
+import { Sparkles, Tag, ArrowRight, Loader2 } from 'lucide-react';
+
+interface BannerItem {
+  id: number;
+  title: string;
+  subtitle: string;
+  badge: string;
+  code?: string | null;
+  bgGradient: string;
+  accentColor: string;
+}
 
 export const PromoBanner = () => {
-  const { applyPromoCode, district } = useStore();
-  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const { applyPromoCode, cart } = useStore();
+  const [banners, setBanners] = useState<BannerItem[]>([]);
+  const [appliedCode, setAppliedCode] = useState<string | null>(null);
+  const [applyingCode, setApplyingCode] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const promos = [
-    {
-      id: 1,
-      title: "Скидка 10% на первый заказ!",
-      code: "SUSHININ10",
-      subtitle: "Вводите промокод при оформлении корзины",
-      badge: "ПРОМОКОД",
-      bgGradient: "from-red-900/60 via-slate-900 to-slate-900",
-      accentColor: "border-red-500/40 text-red-400",
-    },
-    {
-      id: 2,
-      title: `Бесплатная доставка по району ${district?.name || 'Заволжье'}`,
-      code: `ОТ ${district?.freeThreshold || 700} ₽`,
-      subtitle: "Автоматический расчет бесплатной доставки",
-      badge: "АКЦИЯ",
-      bgGradient: "from-sky-950/70 via-slate-900 to-slate-900",
-      accentColor: "border-sky-500/40 text-sky-400",
-    },
-    {
-      id: 3,
-      title: "Скидка 15% на заказы от 2000 ₽!",
-      code: "ROLLFREE",
-      subtitle: "Отличный повод заказать большой сет для всей компании",
-      badge: "ВЫГОДА",
-      bgGradient: "from-emerald-950/70 via-slate-900 to-slate-900",
-      accentColor: "border-emerald-500/40 text-emerald-400",
-    },
-  ];
+  useEffect(() => {
+    fetch('/api/promotions')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.success && Array.isArray(data.banners)) {
+          setBanners(data.banners);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setIsLoading(false));
+  }, []);
 
-  const handleCopyCode = (code: string) => {
-    if (code.startsWith("ОТ")) return;
-    applyPromoCode(code);
-    setCopiedCode(code);
-    setTimeout(() => setCopiedCode(null), 2500);
+  if (isLoading || banners.length === 0) return null;
+
+  const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+  const handleApply = async (banner: BannerItem) => {
+    if (!banner.code) return;
+    setApplyingCode(banner.code);
+    const res = await applyPromoCode(banner.code, subtotal);
+    setApplyingCode(null);
+    if (res.success) {
+      setAppliedCode(banner.code);
+      setTimeout(() => setAppliedCode(null), 2500);
+    } else {
+      alert(res.message);
+    }
   };
 
   return (
     <section className="max-w-7xl mx-auto px-4 mt-4 sm:mt-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {promos.map((p) => (
+        {banners.map((p) => (
           <div
             key={p.id}
             className={`relative overflow-hidden bg-gradient-to-r ${p.bgGradient} border border-slate-800 rounded-2xl p-5 shadow-lg group hover:border-slate-700 transition duration-300`}
@@ -63,23 +68,27 @@ export const PromoBanner = () => {
                   <Sparkles className="w-4 h-4 text-slate-500 group-hover:text-red-400 transition" />
                 </div>
                 <h3 className="text-lg font-black text-slate-100 tracking-tight leading-snug">{p.title}</h3>
-                <p className="text-xs text-slate-400 mt-1">{p.subtitle}</p>
+                {p.subtitle && <p className="text-xs text-slate-400 mt-1">{p.subtitle}</p>}
               </div>
-              <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
-                <button
-                  onClick={() => handleCopyCode(p.code)}
-                  className="flex items-center space-x-2 bg-slate-800/90 hover:bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-200 transition active:scale-95"
-                >
-                  <Tag className="w-3.5 h-3.5 text-red-400" />
-                  <span>{p.code}</span>
-                  {copiedCode === p.code && (
-                    <span className="text-[10px] text-emerald-400 font-normal">Применён!</span>
-                  )}
-                </button>
-                <span className="text-xs font-semibold text-sky-400 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                  Применить <ArrowRight className="w-3 h-3" />
-                </span>
-              </div>
+              {p.code && (
+                <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
+                  <button
+                    onClick={() => handleApply(p)}
+                    disabled={applyingCode === p.code}
+                    className="flex items-center space-x-2 bg-slate-800/90 hover:bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-200 transition active:scale-95 disabled:opacity-60"
+                  >
+                    <Tag className="w-3.5 h-3.5 text-red-400" />
+                    <span>{p.code}</span>
+                    {applyingCode === p.code && <Loader2 className="w-3 h-3 animate-spin" />}
+                    {appliedCode === p.code && (
+                      <span className="text-[10px] text-emerald-400 font-normal">Применён!</span>
+                    )}
+                  </button>
+                  <span className="text-xs font-semibold text-sky-400 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                    Применить <ArrowRight className="w-3 h-3" />
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         ))}

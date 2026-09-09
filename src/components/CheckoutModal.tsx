@@ -53,7 +53,11 @@ export const CheckoutModal = () => {
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const freeThreshold = district?.freeThreshold || 700;
-  const discountAmount = appliedPromo ? Math.round((subtotal * appliedPromo.discountPercent) / 100) : 0;
+  const discountAmount = appliedPromo
+    ? appliedPromo.discountType === 'fixed'
+      ? Math.min(appliedPromo.discountValue, subtotal)
+      : Math.round((subtotal * appliedPromo.discountValue) / 100)
+    : 0;
 
   const {
     register,
@@ -126,6 +130,7 @@ export const CheckoutModal = () => {
       totalAmount: subtotal,
       deliveryFee,
       discount: discountAmount,
+      promoCode: appliedPromo?.code || null,
       zone: district?.name || 'Заволжье',
       paymentMethod: data.paymentMethod,
       deliveryType: data.deliveryType,

@@ -46,19 +46,48 @@ export const orders = pgTable("orders", {
   subtotal: integer("subtotal").notNull(),
   deliveryFee: integer("delivery_fee").notNull(),
   discount: integer("discount").notNull().default(0),
+  promoCode: text("promo_code"),
   totalAmount: integer("total_amount").notNull(),
   status: text("status").notNull().default("new"), // 'new' | 'confirmed' | 'cooking' | 'delivering' | 'completed'
   comment: text("comment"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Промокоды (Конструктор Промокодов)
 export const promotions = pgTable("promotions", {
   id: text("id").primaryKey(),
   code: text("code").notNull().unique(),
-  discountPercent: integer("discount_percent").notNull(),
+  discountType: text("discount_type").notNull().default("percent"), // 'percent' | 'fixed'
+  discountValue: integer("discount_value").notNull(),
   minAmount: integer("min_amount").notNull().default(0),
-  description: text("description").notNull(),
+  usageLimit: integer("usage_limit").notNull().default(0), // 0 = без лимита
+  usedCount: integer("used_count").notNull().default(0),
+  description: text("description").notNull().default(""),
   active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Настройки подарка за минимальный чек (Конструктор Подарков)
+export const giftSettings = pgTable("gift_settings", {
+  id: serial("id").primaryKey(),
+  minAmount: integer("min_amount").notNull().default(2000),
+  productIds: jsonb("product_ids").$type<string[]>().default([]),
+  active: boolean("active").notNull().default(true),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Баннеры акций на главной странице
+export const banners = pgTable("banners", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  subtitle: text("subtitle").notNull().default(""),
+  badge: text("badge").notNull().default("АКЦИЯ"),
+  code: text("code"), // необязательный промокод, применяемый по клику
+  bgGradient: text("bg_gradient").notNull().default("from-red-900/60 via-slate-900 to-slate-900"),
+  accentColor: text("accent_color").notNull().default("border-red-500/40 text-red-400"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const reviews = pgTable("reviews", {

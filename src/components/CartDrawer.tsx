@@ -1,18 +1,20 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '@/store/useStore';
-import { X, Trash2, Plus, Minus, ShoppingBag, Truck, Tag, ArrowRight, Sparkles, AlertCircle, Gift, Check } from 'lucide-react';
+import { X, Trash2, Plus, Minus, ShoppingBag, Truck, Tag, ArrowRight, Sparkles, AlertCircle, Gift, Check, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const FREE_DELIVERY_THRESHOLD = 700;
-const GIFT_THRESHOLD = 2000;
+const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&w=800&q=80';
 
-const GIFT_OPTIONS = [
-  { id: 'gift-california', title: 'Ролл «Калифорния»', emoji: '🍣', description: '8 шт. в подарок' },
-  { id: 'gift-mors', title: 'Морс 0.5л', emoji: '🧃', description: 'Клюквенный морс' },
-  { id: 'gift-cheesecake', title: 'Чизкейк', emoji: '🍰', description: 'Классический чизкейк' },
-];
+interface GiftProduct {
+  id: string;
+  title: string;
+  description: string;
+  imageUrl?: string | null;
+  weight: string;
+}
 
 export const CartDrawer = () => {
   const {
@@ -31,25 +33,59 @@ export const CartDrawer = () => {
 
   const [promoInput, setPromoInput] = useState('');
   const [promoError, setPromoError] = useState('');
-  const [selectedGiftId, setSelectedGiftId] = useState<string | null>(null);
+  const [isApplyingPromo, setIsApplyingPromo] = useState(false);
 
-  if (!isCartOpen) return null;
+  const [giftMinAmount, setGiftMinAmount] = useState<number>(Infinity);
+  const [giftActive, setGiftActive] = useState(false);
+  const [giftProducts, setGiftProducts] = useState<GiftProduct[]>([]);
+
+  useEffect(() => {
+    if (!isCartOpen) return;
+    fetch('/api/promotions')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.gift) {
+          setGiftMinAmount(data.gift.minAmount ?? Infinity);
+          setGiftActive(!!data.gift.active);
+          setGiftProducts(data.gift.products || []);
+        }
+      })
+      .catch(() => {});
+  }, [isCartOpen]);
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const freeThreshold = district?.freeThreshold || FREE_DELIVERY_THRESHOLD;
   const deliveryFee = subtotal >= freeThreshold ? 0 : (district?.deliveryFee || 100);
   const remainingForFree = Math.max(0, freeThreshold - subtotal);
   const progressPercent = Math.min(100, Math.round((subtotal / freeThreshold) * 100));
-  const giftUnlocked = subtotal >= GIFT_THRESHOLD;
-  const remainingForGift = Math.max(0, GIFT_THRESHOLD - subtotal);
 
-  const discountAmount = appliedPromo ? Math.round((subtotal * appliedPromo.discountPercent) / 100) : 0;
+  const giftUnlocked = giftActive && giftProducts.length > 0 && subtotal >= giftMinAmount;
+  const remainingForGift = Math.max(0, giftMinAmount - subtotal);
+  const selectedGiftItem = cart.find((item) => item.id.startsWith('gift-'));
+
+  const discountAmount = appliedPromo
+    ? appliedPromo.discountType === 'fixed'
+      ? Math.min(appliedPromo.discountValue, subtotal)
+      : Math.round((subtotal * appliedPromo.discountValue) / 100)
+    : 0;
   const totalAmount = subtotal - discountAmount + deliveryFee;
 
-  const handleApplyPromo = (e: React.FormEvent) => {
+  // Автоматически снимаем подарок, если сумма упала ниже порога
+  useEffect(() => {
+    if (!giftUnlocked && selectedGiftItem) {
+      removeFromCart(selectedGiftItem.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [giftUnlocked]);
+
+  if (!isCartOpen) return null;
+
+  const handleApplyPromo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!promoInput) return;
-    const res = applyPromoCode(promoInput);
+    setIsApplyingPromo(true);
+    const res = await applyPromoCode(promoInput, subtotal);
+    setIsApplyingPromo(false);
     if (!res.success) {
       setPromoError(res.message);
     } else {
@@ -58,24 +94,21 @@ export const CartDrawer = () => {
     }
   };
 
-  const handleSelectGift = (gift: typeof GIFT_OPTIONS[0]) => {
-    // Убираем предыдущий подарок из корзины
-    if (selectedGiftId) {
-      removeFromCart(selectedGiftId);
+  const handleSelectGift = (gift: GiftProduct) => {
+    if (selectedGiftItem) {
+      removeFromCart(selectedGiftItem.id);
     }
-    setSelectedGiftId(gift.id);
-    // Добавляем подарок как товар с ценой 0
     addToCart(
       {
-        id: gift.id,
+        id: `gift-${gift.id}`,
         title: `🎁 ${gift.title}`,
         category: 'Подарок',
         description: gift.description,
         price: 0,
-        weight: '',
+        weight: gift.weight || '',
         in_stock: true,
         image_filename: '',
-        imageUrl: '',
+        imageUrl: gift.imageUrl || FALLBACK_IMAGE,
         ai_image_prompt: '',
         tags: [],
         hasVariants: false,
@@ -150,48 +183,56 @@ export const CartDrawer = () => {
                   Стоимость доставки: <span className="text-red-400 font-bold">{district?.deliveryFee || 100} ₽</span>
                 </p>
               )}
-              <div className={`flex items-center justify-between text-xs font-semibold pt-1 ${giftUnlocked ? 'text-amber-400' : 'text-slate-500'}`}>
-                <span className="flex items-center gap-1.5">
-                  <Gift className="w-4 h-4" />
-                  {giftUnlocked ? '🎁 Выберите подарок!' : `Подарок от ${GIFT_THRESHOLD} ₽`}
-                </span>
-                {!giftUnlocked && <span className="text-slate-500">Ещё {remainingForGift} ₽</span>}
-              </div>
 
-              {/* Выбор подарка */}
-              <AnimatePresence>
-                {giftUnlocked && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="grid grid-cols-3 gap-2 pt-1"
-                  >
-                    {GIFT_OPTIONS.map((gift) => {
-                      const isChosen = selectedGiftId === gift.id;
-                      return (
-                        <button
-                          key={gift.id}
-                          onClick={() => handleSelectGift(gift)}
-                          className={`relative flex flex-col items-center p-2 rounded-xl border text-center transition ${
-                            isChosen
-                              ? 'bg-amber-500/20 border-amber-400 text-amber-300'
-                              : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:border-amber-500/50'
-                          }`}
-                        >
-                          {isChosen && (
-                            <span className="absolute top-1 right-1 w-4 h-4 bg-amber-400 rounded-full flex items-center justify-center">
-                              <Check className="w-2.5 h-2.5 text-slate-900" />
-                            </span>
-                          )}
-                          <span className="text-xl mb-1">{gift.emoji}</span>
-                          <span className="text-[10px] font-bold leading-tight">{gift.title}</span>
-                        </button>
-                      );
-                    })}
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              {giftActive && giftProducts.length > 0 && (
+                <>
+                  <div className={`flex items-center justify-between text-xs font-semibold pt-1 ${giftUnlocked ? 'text-amber-400' : 'text-slate-500'}`}>
+                    <span className="flex items-center gap-1.5">
+                      <Gift className="w-4 h-4" />
+                      {giftUnlocked ? '🎁 Выберите подарок!' : `Подарок от ${giftMinAmount} ₽`}
+                    </span>
+                    {!giftUnlocked && <span className="text-slate-500">Ещё {remainingForGift} ₽</span>}
+                  </div>
+
+                  <AnimatePresence>
+                    {giftUnlocked && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="grid grid-cols-3 gap-2 pt-1"
+                      >
+                        {giftProducts.map((gift) => {
+                          const isChosen = selectedGiftItem?.id === `gift-${gift.id}`;
+                          return (
+                            <button
+                              key={gift.id}
+                              onClick={() => handleSelectGift(gift)}
+                              className={`relative flex flex-col items-center p-2 rounded-xl border text-center transition ${
+                                isChosen
+                                  ? 'bg-amber-500/20 border-amber-400 text-amber-300'
+                                  : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:border-amber-500/50'
+                              }`}
+                            >
+                              {isChosen && (
+                                <span className="absolute top-1 right-1 w-4 h-4 bg-amber-400 rounded-full flex items-center justify-center">
+                                  <Check className="w-2.5 h-2.5 text-slate-900" />
+                                </span>
+                              )}
+                              {gift.imageUrl ? (
+                                <img src={gift.imageUrl} alt={gift.title} className="w-8 h-8 rounded-lg object-cover mb-1" />
+                              ) : (
+                                <span className="text-xl mb-1">🎁</span>
+                              )}
+                              <span className="text-[10px] font-bold leading-tight line-clamp-2">{gift.title}</span>
+                            </button>
+                          );
+                        })}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </>
+              )}
             </div>
 
             {/* Список товаров */}
@@ -214,7 +255,7 @@ export const CartDrawer = () => {
                       alt={item.title}
                       className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl object-cover bg-slate-950 shrink-0"
                       onError={(e) => {
-                        (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&w=800&q=80';
+                        (e.target as HTMLImageElement).src = FALLBACK_IMAGE;
                       }}
                     />
                     <div className="flex-1 min-w-0">
@@ -259,7 +300,9 @@ export const CartDrawer = () => {
                     <div className="flex items-center space-x-2">
                       <Tag className="w-4 h-4 text-emerald-400" />
                       <div>
-                        <span className="text-xs font-bold text-emerald-300">{appliedPromo.code} (-{appliedPromo.discountPercent}%)</span>
+                        <span className="text-xs font-bold text-emerald-300">
+                          {appliedPromo.code} (-{appliedPromo.discountType === 'percent' ? `${appliedPromo.discountValue}%` : `${appliedPromo.discountValue} ₽`})
+                        </span>
                         <p className="text-[10px] text-emerald-400/80">{appliedPromo.description}</p>
                       </div>
                     </div>
@@ -272,11 +315,15 @@ export const CartDrawer = () => {
                         type="text"
                         value={promoInput}
                         onChange={(e) => { setPromoInput(e.target.value.toUpperCase()); setPromoError(''); }}
-                        placeholder="Промокод (SUSHININ10)"
+                        placeholder="Введите промокод"
                         className="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-red-500"
                       />
-                      <button type="submit" className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition">
-                        Ввод
+                      <button
+                        type="submit"
+                        disabled={isApplyingPromo}
+                        className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition disabled:opacity-50 flex items-center gap-1.5"
+                      >
+                        {isApplyingPromo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Ввод'}
                       </button>
                     </div>
                     {promoError && (
@@ -304,7 +351,7 @@ export const CartDrawer = () => {
                       {deliveryFee === 0 ? 'БЕСПЛАТНО' : `${deliveryFee} ₽`}
                     </span>
                   </div>
-                  {giftUnlocked && selectedGiftId && (
+                  {selectedGiftItem && (
                     <div className="flex justify-between text-amber-400 font-semibold">
                       <span>🎁 Подарок:</span>
                       <span>0 ₽</span>
