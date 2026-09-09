@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { orders } from '@/db/schema';
+import { sql } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,27 +25,32 @@ export async function POST(req: Request) {
     const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
     const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
-    const itemsList = items
+    const safeItems = Array.isArray(items) ? items : [];
+
+    const itemsList = safeItems
       .map((item: any) => `- ${item.title} ${item.variant ? `(${item.variant})` : ''} (${item.quantity} шт) — ${item.price * item.quantity} ₽`)
       .join('\n');
 
-    const finalPay = totalAmount + deliveryFee - discount;
+    const subtotalNum = Math.round(Number(totalAmount) || 0);
+    const deliveryFeeNum = Math.round(Number(deliveryFee) || 0);
+    const discountNum = Math.round(Number(discount) || 0);
+    const finalPay = subtotalNum + deliveryFeeNum - discountNum;
 
     const message = `
 <b>🚨 НОВЫЙ ЗАКАЗ #${orderId}</b>
 
-<b>👤 Клиент:</b> ${customer.name} (${customer.phone})
+<b>👤 Клиент:</b> ${customer?.name || 'Покупатель'} (${customer?.phone || ''})
 <b>📍 Район/Зона:</b> ${zone}
 <b>🚗 Тип:</b> ${deliveryType === 'delivery' ? 'Доставка' : 'Самовывоз'}
 <b>🏠 Адрес:</b> ${address}
 <b>🕒 Время:</b> ${time}
 <b>💳 Оплата:</b> ${paymentMethod}
-${customer.comment ? `<b>💬 Комментарий:</b> ${customer.comment}\n` : ''}
+${customer?.comment ? `<b>💬 Комментарий:</b> ${customer.comment}\n` : ''}
 <b>📦 Состав заказа:</b>
 ${itemsList}
 
-<b>🚚 Доставка:</b> ${deliveryFee === 0 ? 'БЕСПЛАТНО' : `${deliveryFee} ₽`}
-${discount > 0 ? `<b>🏷️ Скидка:</b> -${discount} ₽\n` : ''}<b>💰 ИТОГО К ОПЛАТЕ:</b> ${finalPay} ₽
+<b>🚚 Доставка:</b> ${deliveryFeeNum === 0 ? 'БЕСПЛАТНО' : `${deliveryFeeNum} ₽`}
+${discountNum > 0 ? `<b>🏷️ Скидка:</b> -${discountNum} ₽\n` : ''}<b>💰 ИТОГО К ОПЛАТЕ:</b> ${finalPay} ₽
     `;
 
     if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
@@ -63,24 +69,16 @@ ${discount > 0 ? `<b>🏷️ Скидка:</b> -${discount} ₽\n` : ''}<b>💰 
       }
     }
 
-    // Save order to Postgres
-    await db.insert(orders).values({
-      orderNumber: String(orderId),
-      customerName: customer.name || 'Покупатель',
-      customerPhone: customer.phone || '',
-      zone: zone || 'Заволжье',
-      deliveryType: deliveryType || 'delivery',
-      address: address || 'Самовывоз',
-      time: time || 'Ближайшее',
-      paymentMethod: paymentMethod || 'Картой курьеру',
-      items: items,
-      subtotal: totalAmount,
-      deliveryFee: deliveryFee,
-      discount: discount,
-      totalAmount: finalPay,
-      status: 'new',
-      comment: customer.comment || '',
-    });
+    // Сохранение заказа в PostgreSQL с приведением к jsonb
+    try {
+      const itemsJson = JSON.stringify(safeItems);
+      await db.execute(
+        sql`INSERT INTO "orders" ("order_number", "customer_name", "customer_phone", "zone", "delivery_type", "address", "time", "payment_method", "items", "subtotal", "delivery_fee", "discount", "total_amount", "status", "comment")
+            VALUES (${String(orderId)}, ${customer?.name || 'Покупатель'}, ${customer?.phone || ''}, ${String(zone || 'Заволжье')}, ${String(deliveryType || 'delivery')}, ${String(address || 'Самовывоз')}, ${String(time || 'Ближайшее')}, ${String(paymentMethod || 'Картой курьеру')}, ${itemsJson}::jsonb, ${subtotalNum}, ${deliveryFeeNum}, ${discountNum}, ${finalPay}, 'new', ${customer?.comment || ''})`
+      );
+    } catch (dbErr) {
+      console.error('Failed to save order to Postgres:', dbErr);
+    }
 
     return NextResponse.json({ success: true, orderId });
   } catch (error: any) {
