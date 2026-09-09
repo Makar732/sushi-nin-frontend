@@ -1,24 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export function middleware(request: NextRequest) {
+export function middleware(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
 
-  // Пропускаем страницу логина и API авторизации
-  if (pathname === '/admin/login' || pathname.startsWith('/api/admin/auth')) {
+  if (
+    pathname === '/admin/login' ||
+    pathname.startsWith('/api/admin/auth')
+  ) {
     return NextResponse.next();
   }
 
-  // Защищаем всё под /admin
   if (pathname.startsWith('/admin')) {
     const token = request.cookies.get('admin_token')?.value;
+    const secret = process.env.ADMIN_JWT_SECRET || 'fallback_secret';
 
-    if (!token) {
-      return NextResponse.redirect(new URL('/admin/login', request.url));
-    }
-
-    // Простая проверка токена
-    if (token !== process.env.ADMIN_JWT_SECRET) {
-      return NextResponse.redirect(new URL('/admin/login', request.url));
+    if (!token || token !== secret) {
+      const loginUrl = new URL('/admin/login', request.url);
+      return NextResponse.redirect(loginUrl);
     }
   }
 
