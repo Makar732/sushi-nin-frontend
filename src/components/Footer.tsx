@@ -89,11 +89,20 @@ export const Footer = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 pt-6 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-4">
-        <span>© {new Date().getFullYear()} «СушиНин» (г. Заволжье). Все права защищены.</span>
-        <span className="flex items-center gap-1">
-          Сделано с <Heart className="w-3.5 h-3.5 text-red-500 fill-red-500" /> для гурманов Заволжья
-        </span>
-      </div>
+  <span>© {new Date().getFullYear()} «СушиНин» (г. Заволжье). Все права защищены.</span>
+  <div className="flex items-center gap-4">
+    <span className="flex items-center gap-1">
+      Сделано с <Heart className="w-3.5 h-3.5 text-red-500 fill-red-500" /> для гурманов Заволжья
+    </span>
+    <a
+      href="/admin"
+      className="text-slate-700 hover:text-slate-500 transition"
+      title="Панель администратора"
+    >
+      🔒
+    </a>
+  </div>
+</div>
     </footer>
   );
 };
