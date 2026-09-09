@@ -28,18 +28,55 @@ export async function GET() {
   }
 }
 
-// Обновление зоны доставки
+// Создание новой зоны доставки
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+    const { name, freeThreshold, deliveryFee, description } = body;
+
+    if (!name) {
+      return NextResponse.json({ success: false, error: 'Название зоны обязательно' }, { status: 400 });
+    }
+
+    const slug = name
+      .toString()
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-zа-яё0-9]+/gi, '-')
+      .replace(/^-+|-+$/g, '');
+
+    const newId = `${slug || 'zone'}-${Date.now()}`;
+
+    await db.insert(deliveryZones).values({
+      id: newId,
+      name,
+      freeThreshold: freeThreshold ? Number(freeThreshold) : 700,
+      deliveryFee: deliveryFee ? Number(deliveryFee) : 150,
+      description: description || '',
+      active: true,
+    });
+
+    return NextResponse.json({ success: true, id: newId });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
+  }
+}
+
+// Обновление зоны доставки или расписания работы
 export async function PATCH(req: Request) {
   try {
     const body = await req.json();
-    const { type, id, freeThreshold, deliveryFee, active,
+    const { type, id, name, freeThreshold, deliveryFee, description, active,
             openTime, closeTime, isManualClosed, manualCloseReason } = body;
 
     if (type === 'zone') {
       if (!id) return NextResponse.json({ success: false, error: 'ID зоны обязателен' }, { status: 400 });
       const updateData: Record<string, unknown> = {};
+      if (name !== undefined) updateData.name = name;
       if (freeThreshold !== undefined) updateData.freeThreshold = Number(freeThreshold);
       if (deliveryFee !== undefined) updateData.deliveryFee = Number(deliveryFee);
+      if (description !== undefined) updateData.description = description;
       if (typeof active === 'boolean') updateData.active = active;
       await db.update(deliveryZones).set(updateData).where(eq(deliveryZones.id, id));
     } else if (type === 'hours') {
@@ -64,6 +101,24 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ success: false, error: 'Неверный тип обновления' }, { status: 400 });
     }
 
+    return NextResponse.json({ success: true });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
+  }
+}
+
+// Удаление зоны доставки
+export async function DELETE(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'ID зоны обязателен' }, { status: 400 });
+    }
+
+    await db.delete(deliveryZones).where(eq(deliveryZones.id, id));
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
