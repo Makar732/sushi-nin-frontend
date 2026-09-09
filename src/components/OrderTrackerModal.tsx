@@ -5,7 +5,7 @@ import { useStore } from '@/store/useStore';
 import { X, CheckCircle2, ChefHat, Bike, Home, Sparkles, Phone, Timer } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-export function useElapsedTime(createdAt: string | null) {
+export function useElapsedTime(createdAt: string | null, stopped: boolean = false) {
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
@@ -13,16 +13,15 @@ export function useElapsedTime(createdAt: string | null) {
     const start = new Date(createdAt).getTime();
     const update = () => setElapsed(Math.floor((Date.now() - start) / 1000));
     update();
+    if (stopped) return; // Таймер остановлен — не запускаем интервал
     const id = setInterval(update, 1000);
     return () => clearInterval(id);
-  }, [createdAt]);
+  }, [createdAt, stopped]);
 
   const m = Math.floor(elapsed / 60).toString().padStart(2, '0');
   const s = (elapsed % 60).toString().padStart(2, '0');
   return `${m}:${s}`;
 }
-
-const STATUS_STEPS = ['confirmed', 'cooking', 'delivering', 'completed'];
 
 const STATUS_MAP: Record<string, number> = {
   new: 0,
@@ -41,10 +40,13 @@ const STEPS = [
 
 export const OrderTrackerModal = () => {
   const { activeOrder, isOrderTrackerOpen, setOrderTrackerOpen, setActiveOrder } = useStore();
-  const elapsed = useElapsedTime(activeOrder?.createdAt ?? null);
   const [liveStatus, setLiveStatus] = useState<string>(activeOrder?.status || 'confirmed');
 
-  // Polling статуса из БД каждые 5 секунд
+  const isCompleted = liveStatus === 'completed';
+
+  // Таймер останавливается когда статус = completed
+  const elapsed = useElapsedTime(activeOrder?.createdAt ?? null, isCompleted);
+
   useEffect(() => {
     if (!activeOrder?.orderNumber) return;
 
@@ -57,7 +59,6 @@ export const OrderTrackerModal = () => {
         const data = await res.json();
         if (data.success && data.status) {
           setLiveStatus(data.status);
-          // Обновляем стор чтобы MobileOrderBanner тоже получил актуальный статус
           setActiveOrder({ ...activeOrder, status: data.status });
         }
       } catch {}
@@ -71,7 +72,6 @@ export const OrderTrackerModal = () => {
   if (!isOrderTrackerOpen || !activeOrder) return null;
 
   const currentStepIndex = STATUS_MAP[liveStatus] ?? 0;
-  const isCompleted = liveStatus === 'completed';
 
   return (
     <AnimatePresence>
@@ -83,13 +83,11 @@ export const OrderTrackerModal = () => {
           transition={{ type: 'spring', damping: 25, stiffness: 200 }}
           className="relative w-full sm:max-w-lg bg-slate-900 border border-slate-800 sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-y-auto max-h-[92vh]"
         >
-          {/* Ручка для мобилки */}
           <div className="sm:hidden flex justify-center pt-3 pb-1">
             <div className="w-10 h-1 bg-slate-700 rounded-full" />
           </div>
 
           <div className="p-5 sm:p-8 space-y-5">
-            {/* Закрыть */}
             <button
               onClick={() => setOrderTrackerOpen(false)}
               className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition"
@@ -97,7 +95,6 @@ export const OrderTrackerModal = () => {
               <X className="w-5 h-5" />
             </button>
 
-            {/* Заголовок */}
             <div className="flex items-center space-x-3 pr-8">
               <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-2xl text-red-400 shrink-0">
                 <Sparkles className="w-5 h-5" />
@@ -112,12 +109,20 @@ export const OrderTrackerModal = () => {
               </div>
             </div>
 
-            {/* Таймер */}
-            <div className="flex items-center justify-center gap-3 p-4 bg-slate-950/80 border border-slate-800 rounded-2xl">
-              <Timer className="w-5 h-5 text-red-400 animate-pulse shrink-0" />
+            {/* Таймер — показываем всегда, но при completed он заморожен */}
+            <div className={`flex items-center justify-center gap-3 p-4 border rounded-2xl ${
+              isCompleted
+                ? 'bg-emerald-950/40 border-emerald-500/30'
+                : 'bg-slate-950/80 border-slate-800'
+            }`}>
+              <Timer className={`w-5 h-5 shrink-0 ${isCompleted ? 'text-emerald-400' : 'text-red-400 animate-pulse'}`} />
               <div className="text-center">
-                <p className="text-xs text-slate-400 mb-0.5">Прошло с момента заказа</p>
-                <span className="text-3xl font-black text-white font-mono tracking-widest">
+                <p className="text-xs text-slate-400 mb-0.5">
+                  {isCompleted ? 'Время доставки составило' : 'Прошло с момента заказа'}
+                </p>
+                <span className={`text-3xl font-black font-mono tracking-widest ${
+                  isCompleted ? 'text-emerald-400' : 'text-white'
+                }`}>
                   {elapsed}
                 </span>
               </div>
@@ -129,9 +134,9 @@ export const OrderTrackerModal = () => {
                 ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
                 : 'bg-sky-500/10 border-sky-500/30 text-sky-400'
             }`}>
-              <span className="w-2 h-2 rounded-full animate-pulse inline-block" style={{
-                backgroundColor: isCompleted ? '#34d399' : '#38bdf8'
-              }} />
+              <span className={`w-2 h-2 rounded-full inline-block ${
+                isCompleted ? 'bg-emerald-400' : 'bg-sky-400 animate-pulse'
+              }`} />
               {isCompleted ? '✅ Ваш заказ доставлен!' : '🔄 Обновляется каждые 5 сек'}
             </div>
 
@@ -161,25 +166,21 @@ export const OrderTrackerModal = () => {
                 const isCurrent = idx === currentStepIndex;
                 return (
                   <div key={step.id} className="relative flex items-start space-x-3">
-                    <div
-                      className={`absolute -left-[27px] top-0 w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all duration-500 ${
-                        isDone
-                          ? 'bg-red-600 border-red-400 text-white'
-                          : 'bg-slate-900 border-slate-700 text-slate-600'
-                      } ${isCurrent && !isCompleted ? 'ring-2 ring-red-500/40 ring-offset-1 ring-offset-slate-900' : ''}`}
-                    >
+                    <div className={`absolute -left-[27px] top-0 w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all duration-500 ${
+                      isDone
+                        ? 'bg-red-600 border-red-400 text-white'
+                        : 'bg-slate-900 border-slate-700 text-slate-600'
+                    } ${isCurrent && !isCompleted ? 'ring-2 ring-red-500/40 ring-offset-1 ring-offset-slate-900' : ''}`}>
                       <Icon className="w-3 h-3" />
                     </div>
                     <div>
-                      <h4
-                        className={`font-bold leading-tight transition-all duration-300 ${
-                          isCurrent && !isCompleted
-                            ? 'text-red-400 text-base font-extrabold'
-                            : isDone
-                            ? 'text-slate-200 text-sm'
-                            : 'text-slate-500 text-sm'
-                        }`}
-                      >
+                      <h4 className={`font-bold leading-tight transition-all duration-300 ${
+                        isCurrent && !isCompleted
+                          ? 'text-red-400 text-base font-extrabold'
+                          : isDone
+                          ? 'text-slate-200 text-sm'
+                          : 'text-slate-500 text-sm'
+                      }`}>
                         {step.label}
                         {isCurrent && !isCompleted && (
                           <span className="ml-2 text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded-full border border-red-500/30 font-bold animate-pulse">
@@ -194,7 +195,6 @@ export const OrderTrackerModal = () => {
               })}
             </div>
 
-            {/* Если доставлен — кнопка закрыть */}
             {isCompleted && (
               <button
                 onClick={() => setOrderTrackerOpen(false)}
@@ -204,13 +204,9 @@ export const OrderTrackerModal = () => {
               </button>
             )}
 
-            {/* Телефон */}
             <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs">
               <span className="text-slate-400">Возник вопрос?</span>
-              <a
-                href="tel:+79308184040"
-                className="flex items-center gap-1.5 font-bold text-red-400 hover:underline"
-              >
+              <a href="tel:+79308184040" className="flex items-center gap-1.5 font-bold text-red-400 hover:underline">
                 <Phone className="w-3.5 h-3.5" />
                 +7 (930) 818-40-40
               </a>
