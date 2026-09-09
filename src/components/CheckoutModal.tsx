@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '@/store/useStore';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import confetti from 'canvas-confetti';
-import { X, Truck, Store, CreditCard, Banknote, Smartphone, Clock, MapPin, CheckCircle2, Loader2, Sparkles, Users } from 'lucide-react';
+import { X, Truck, Store, CreditCard, Banknote, Smartphone, CheckCircle2, Loader2, Sparkles, Users, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const checkoutSchema = z.object({
@@ -24,7 +24,6 @@ const checkoutSchema = z.object({
 
 type CheckoutFormData = z.infer<typeof checkoutSchema>;
 
-// Маска телефона
 function formatPhone(raw: string): string {
   const digits = raw.replace(/\D/g, '');
   const d = digits.startsWith('7') ? digits.slice(1) : digits.startsWith('8') ? digits.slice(1) : digits;
@@ -50,6 +49,24 @@ export const CheckoutModal = () => {
 
   const [isLoading, setIsLoading] = useState(false);
   const [orderSuccessId, setOrderSuccessId] = useState<string | null>(null);
+  const [storeStatus, setStoreStatus] = useState<{
+    isOpen: boolean;
+    openTime: string;
+    closeTime: string;
+    isManualClosed: boolean;
+    manualCloseReason: string;
+  } | null>(null);
+
+  // Проверяем статус заведения при открытии модалки
+  useEffect(() => {
+    if (!isCheckoutOpen) return;
+    fetch('/api/store-status')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) setStoreStatus(data);
+      })
+      .catch(() => {});
+  }, [isCheckoutOpen]);
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const freeThreshold = district?.freeThreshold || 700;
@@ -89,27 +106,22 @@ export const CheckoutModal = () => {
 
   if (!isCheckoutOpen) return null;
 
-  // Обработчик маски телефона
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value;
-    const formatted = formatPhone(raw);
-    setValue('phone', formatted, { shouldValidate: true });
+    setValue('phone', formatPhone(e.target.value), { shouldValidate: true });
   };
 
   const handlePhoneFocus = () => {
-    if (!phoneValue) {
-      setValue('phone', '+7 (');
-    }
+    if (!phoneValue) setValue('phone', '+7 (');
   };
 
   const handlePhoneKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    // Запрещаем буквы
-    if (/^[a-zA-Zа-яА-Я]$/.test(e.key)) {
-      e.preventDefault();
-    }
+    if (/^[a-zA-Zа-яА-Я]$/.test(e.key)) e.preventDefault();
   };
 
+  const isClosed = storeStatus && !storeStatus.isOpen;
+
   const onSubmit = async (data: CheckoutFormData) => {
+    if (isClosed) return;
     setIsLoading(true);
 
     const generatedOrderId = `SN-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -144,12 +156,10 @@ export const CheckoutModal = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-
       const json = await res.json();
 
       if (json.success) {
         try { confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } }); } catch {}
-
         setOrderSuccessId(generatedOrderId);
         setActiveOrder({
           orderNumber: generatedOrderId,
@@ -204,6 +214,30 @@ export const CheckoutModal = () => {
             </button>
           </div>
 
+          {/* Баннер закрытия заведения */}
+          {isClosed && (
+            <div className="px-5 pt-4 shrink-0">
+              <div className="flex items-start gap-3 p-4 bg-red-500/10 border border-red-500/30 rounded-2xl">
+                <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-black text-red-300">
+                    {storeStatus?.isManualClosed
+                      ? '🔴 Заведение временно не принимает заказы'
+                      : `🕐 Мы работаем с ${storeStatus?.openTime} до ${storeStatus?.closeTime} (МСК)`}
+                  </p>
+                  {storeStatus?.isManualClosed && storeStatus.manualCloseReason && (
+                    <p className="text-xs text-red-400/80 mt-1">{storeStatus.manualCloseReason}</p>
+                  )}
+                  {!storeStatus?.isManualClosed && (
+                    <p className="text-xs text-slate-400 mt-1">
+                      Сейчас не рабочее время. Оформление заказов недоступно.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Success Screen */}
           {orderSuccessId ? (
             <div className="p-8 sm:p-12 text-center space-y-6">
@@ -245,7 +279,7 @@ export const CheckoutModal = () => {
                     </label>
                     <div className="grid grid-cols-2 gap-3">
                       <button type="button" onClick={() => setValue('deliveryType', 'delivery')}
-                        className={`p-3.5 rounded-2xl border flex items-center space-x-3 transition ${deliveryType === 'delivery' ? 'bg-red-600/20 border-red-500 text-slate-100 shadow-md shadow-red-500/10' : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'}`}>
+                        className={`p-3.5 rounded-2xl border flex items-center space-x-3 transition ${deliveryType === 'delivery' ? 'bg-red-600/20 border-red-500 text-slate-100' : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'}`}>
                         <Truck className={deliveryType === 'delivery' ? 'text-red-400' : ''} />
                         <div className="text-left">
                           <span className="font-extrabold text-sm block">Доставка</span>
@@ -253,7 +287,7 @@ export const CheckoutModal = () => {
                         </div>
                       </button>
                       <button type="button" onClick={() => setValue('deliveryType', 'pickup')}
-                        className={`p-3.5 rounded-2xl border flex items-center space-x-3 transition ${deliveryType === 'pickup' ? 'bg-red-600/20 border-red-500 text-slate-100 shadow-md shadow-red-500/10' : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'}`}>
+                        className={`p-3.5 rounded-2xl border flex items-center space-x-3 transition ${deliveryType === 'pickup' ? 'bg-red-600/20 border-red-500 text-slate-100' : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'}`}>
                         <Store className={deliveryType === 'pickup' ? 'text-red-400' : ''} />
                         <div className="text-left">
                           <span className="font-extrabold text-sm block">Самовывоз</span>
@@ -270,11 +304,8 @@ export const CheckoutModal = () => {
                     </label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <input
-                          {...register('name')}
-                          placeholder="Имя *"
-                          className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-red-500"
-                        />
+                        <input {...register('name')} placeholder="Имя *"
+                          className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-red-500" />
                         {errors.name && <span className="text-[11px] text-red-400 mt-1 block">{errors.name.message}</span>}
                       </div>
                       <div>
@@ -362,12 +393,8 @@ export const CheckoutModal = () => {
 
                   {/* Сарафанная скидка */}
                   <div>
-                    <a
-                      href="https://t.me/sushi_nin_promo_bot"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 hover:border-sky-500/60 rounded-2xl text-sky-300 font-bold text-sm transition"
-                    >
+                    <a href="https://t.me/sushi_nin_promo_bot" target="_blank" rel="noopener noreferrer"
+                      className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 hover:border-sky-500/60 rounded-2xl text-sky-300 font-bold text-sm transition">
                       <Users className="w-4 h-4" />
                       Получить сарафанную скидку
                     </a>
@@ -426,10 +453,15 @@ export const CheckoutModal = () => {
                     </div>
                   </div>
 
-                  <button type="submit" disabled={isLoading}
-                    className="w-full py-4 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-600 text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-red-500/25 flex items-center justify-center space-x-2 active:scale-95 transition disabled:opacity-50">
+                  <button
+                    type="submit"
+                    disabled={isLoading || !!isClosed}
+                    className="w-full py-4 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-600 text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-red-500/25 flex items-center justify-center space-x-2 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
                     {isLoading ? (
                       <><Loader2 className="w-5 h-5 animate-spin" /><span>Отправляем заказ...</span></>
+                    ) : isClosed ? (
+                      <><AlertTriangle className="w-5 h-5" /><span>Заведение закрыто</span></>
                     ) : (
                       <span>Подтвердить и оплатить ({finalTotal} ₽)</span>
                     )}

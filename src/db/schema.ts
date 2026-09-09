@@ -38,7 +38,7 @@ export const orders = pgTable("orders", {
   customerName: text("customer_name").notNull(),
   customerPhone: text("customer_phone").notNull(),
   zone: text("zone").notNull(),
-  deliveryType: text("delivery_type").notNull(), // 'delivery' | 'pickup'
+  deliveryType: text("delivery_type").notNull(),
   address: text("address").notNull(),
   time: text("time").notNull(),
   paymentMethod: text("payment_method").notNull(),
@@ -48,26 +48,24 @@ export const orders = pgTable("orders", {
   discount: integer("discount").notNull().default(0),
   promoCode: text("promo_code"),
   totalAmount: integer("total_amount").notNull(),
-  status: text("status").notNull().default("new"), // 'new' | 'confirmed' | 'cooking' | 'delivering' | 'completed'
+  status: text("status").notNull().default("new"),
   comment: text("comment"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Промокоды (Конструктор Промокодов)
 export const promotions = pgTable("promotions", {
   id: text("id").primaryKey(),
   code: text("code").notNull().unique(),
-  discountType: text("discount_type").notNull().default("percent"), // 'percent' | 'fixed'
+  discountType: text("discount_type").notNull().default("percent"),
   discountValue: integer("discount_value").notNull(),
   minAmount: integer("min_amount").notNull().default(0),
-  usageLimit: integer("usage_limit").notNull().default(0), // 0 = без лимита
+  usageLimit: integer("usage_limit").notNull().default(0),
   usedCount: integer("used_count").notNull().default(0),
   description: text("description").notNull().default(""),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Настройки подарка за минимальный чек (Конструктор Подарков)
 export const giftSettings = pgTable("gift_settings", {
   id: serial("id").primaryKey(),
   minAmount: integer("min_amount").notNull().default(2000),
@@ -76,18 +74,37 @@ export const giftSettings = pgTable("gift_settings", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Баннеры акций на главной странице
 export const banners = pgTable("banners", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
   subtitle: text("subtitle").notNull().default(""),
   badge: text("badge").notNull().default("АКЦИЯ"),
-  code: text("code"), // необязательный промокод, применяемый по клику
+  code: text("code"),
   bgGradient: text("bg_gradient").notNull().default("from-red-900/60 via-slate-900 to-slate-900"),
   accentColor: text("accent_color").notNull().default("border-red-500/40 text-red-400"),
   sortOrder: integer("sort_order").notNull().default(0),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Зоны доставки (управляемые из админки, синхронизированы с таблицей districts)
+export const deliveryZones = pgTable("delivery_zones", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  freeThreshold: integer("free_threshold").notNull(),
+  deliveryFee: integer("delivery_fee").notNull(),
+  description: text("description").notNull().default(""),
+  active: boolean("active").notNull().default(true),
+});
+
+// Режим работы заведения
+export const workingHours = pgTable("working_hours", {
+  id: serial("id").primaryKey(),
+  openTime: text("open_time").notNull().default("11:00"),
+  closeTime: text("close_time").notNull().default("22:40"),
+  isManualClosed: boolean("is_manual_closed").notNull().default(false),
+  manualCloseReason: text("manual_close_reason").notNull().default(""),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const reviews = pgTable("reviews", {

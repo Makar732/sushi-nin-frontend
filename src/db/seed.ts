@@ -1,5 +1,5 @@
 import { db } from "./index";
-import { districts, categories, products, promotions, giftSettings, banners } from "./schema";
+import { districts, categories, products, promotions, giftSettings, banners, deliveryZones, workingHours } from "./schema";
 import { DISTRICTS } from "../data/districts";
 import { CATEGORIES } from "../data/categories";
 import { PRODUCTS } from "../data/products";
@@ -47,7 +47,7 @@ export async function seedDatabase() {
       }).onConflictDoNothing();
     }
 
-    // Seed Promotions (новая схема: discountType + discountValue вместо discountPercent)
+    // Seed Promotions
     const defaultPromos = [
       {
         id: "promo1",
@@ -88,7 +88,7 @@ export async function seedDatabase() {
       await db.insert(promotions).values(promo).onConflictDoNothing();
     }
 
-    // Seed Gift Settings (дефолтные настройки подарка за чек)
+    // Seed Gift Settings
     const existingGift = await db.select().from(giftSettings).limit(1);
     if (existingGift.length === 0) {
       await db.insert(giftSettings).values({
@@ -98,7 +98,7 @@ export async function seedDatabase() {
       });
     }
 
-    // Seed Banners (дефолтные баннеры на главной)
+    // Seed Banners
     const defaultBanners = [
       {
         title: "Скидка 10% на первый заказ!",
@@ -134,6 +134,29 @@ export async function seedDatabase() {
 
     for (const banner of defaultBanners) {
       await db.insert(banners).values(banner).onConflictDoNothing();
+    }
+
+    // Seed Delivery Zones (из статических данных)
+    for (const d of DISTRICTS) {
+      await db.insert(deliveryZones).values({
+        id: d.id,
+        name: d.name,
+        freeThreshold: d.freeThreshold,
+        deliveryFee: d.deliveryFee,
+        description: d.description,
+        active: true,
+      }).onConflictDoNothing();
+    }
+
+    // Seed Working Hours (дефолт: 11:00 — 22:40)
+    const existingHours = await db.select().from(workingHours).limit(1);
+    if (existingHours.length === 0) {
+      await db.insert(workingHours).values({
+        openTime: "11:00",
+        closeTime: "22:40",
+        isManualClosed: false,
+        manualCloseReason: "",
+      });
     }
 
     console.log("Database successfully seeded with Sushimin menu data!");
