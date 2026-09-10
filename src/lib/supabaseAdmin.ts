@@ -1,22 +1,31 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Убираем возможные пробелы/кавычки/хвостовой слэш из URL —
-// частая причина "Invalid path specified in request URL"
-const rawUrl = process.env.SUPABASE_URL?.trim();
-const supabaseUrl = rawUrl?.replace(/\/+$/, '');
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+// Убираем /rest/v1/, /auth/v1/ и любой хвостовой слэш —
+// supabase-js сам дописывает нужные пути
+const rawUrl = process.env.SUPABASE_URL?.trim() ?? '';
+const supabaseUrl = rawUrl
+  .replace(/\/rest\/v1\/?$/, '')
+  .replace(/\/auth\/v1\/?$/, '')
+  .replace(/\/storage\/v1\/?$/, '')
+  .replace(/\/+$/, '');
+
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? '';
 
 if (!supabaseUrl || !serviceRoleKey) {
   throw new Error(
-    'SUPABASE_URL и SUPABASE_SERVICE_ROLE_KEY обязательны для работы Supabase Storage. Добавьте их в переменные окружения.'
+    'SUPABASE_URL и SUPABASE_SERVICE_ROLE_KEY обязательны. ' +
+    'Добавьте их в .env.local и переменные окружения Vercel.'
   );
 }
 
-if (!/^https:\/\/[a-z0-9]+\.supabase\.co$/.test(supabaseUrl)) {
+// Логируем итоговый URL при старте сервера — поможет отловить следующую опечатку
+console.log('[supabaseAdmin] URL:', supabaseUrl);
+
+if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(supabaseUrl)) {
   console.warn(
-    '⚠️ SUPABASE_URL выглядит подозрительно:',
+    '⚠️ [supabaseAdmin] SUPABASE_URL выглядит некорректно:',
     supabaseUrl,
-    '— проверьте, что это чистый URL вида https://xxxxx.supabase.co без хвостового слэша и кавычек.'
+    '\nОжидается формат: https://xxxxxxxxxxxx.supabase.co'
   );
 }
 
@@ -29,6 +38,12 @@ export const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
 
 export const DISHES_BUCKET = 'dishes';
 
+/**
+ * Извлекает путь файла внутри бакета из публичного URL Supabase Storage.
+ * Пример входа:  https://xxx.supabase.co/storage/v1/object/public/dishes/dish_123.webp
+ * Пример выхода: dish_123.webp
+ * Если URL не из нашего бакета — возвращает null.
+ */
 export function extractStoragePath(publicUrl: string | null | undefined): string | null {
   if (!publicUrl) return null;
   const marker = `/storage/v1/object/public/${DISHES_BUCKET}/`;
