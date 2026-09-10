@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { District, DISTRICTS } from '@/data/districts';
+import { District } from '@/data/districts';
 import { Product } from '@/data/products';
 
 export interface CartItem {
@@ -24,8 +24,10 @@ export interface AppliedPromo {
 
 interface AppState {
   district: District | null;
+  districts: District[];
   isDistrictModalOpen: boolean;
   setDistrict: (district: District) => void;
+  setDistricts: (districts: District[]) => void;
   openDistrictModal: () => void;
   closeDistrictModal: () => void;
 
@@ -61,9 +63,11 @@ interface AppState {
 export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
-      district: DISTRICTS[0],
+      district: null,
+      districts: [],
       isDistrictModalOpen: false,
       setDistrict: (district) => set({ district, isDistrictModalOpen: false }),
+      setDistricts: (districts) => set({ districts }),
       openDistrictModal: () => set({ isDistrictModalOpen: true }),
       closeDistrictModal: () => set({ isDistrictModalOpen: false }),
 
@@ -170,7 +174,6 @@ export const useStore = create<AppState>()(
       storage: createJSONStorage(() => localStorage),
       version: 2,
       migrate: (persistedState: any, version) => {
-        // В версии 1 appliedPromo хранил discountPercent — сбрасываем при миграции
         if (version < 2 && persistedState) {
           return { ...persistedState, appliedPromo: null };
         }

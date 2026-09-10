@@ -6,7 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import confetti from 'canvas-confetti';
-import { X, Truck, Store, CreditCard, Banknote, Smartphone, CheckCircle2, Loader2, Sparkles, Users, AlertTriangle } from 'lucide-react';
+import { X, Truck, Store, CreditCard, Banknote, Smartphone, CheckCircle2, Loader2, Sparkles, Users, AlertTriangle, MapPin } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const checkoutSchema = z.object({
@@ -44,7 +44,8 @@ export const CheckoutModal = () => {
     appliedPromo,
     clearCart,
     setActiveOrder,
-    setOrderTrackerOpen
+    setOrderTrackerOpen,
+    openDistrictModal,
   } = useStore();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -57,7 +58,6 @@ export const CheckoutModal = () => {
     manualCloseReason: string;
   } | null>(null);
 
-  // Проверяем статус заведения при открытии модалки
   useEffect(() => {
     if (!isCheckoutOpen) return;
     fetch('/api/store-status')
@@ -119,9 +119,16 @@ export const CheckoutModal = () => {
   };
 
   const isClosed = storeStatus && !storeStatus.isOpen;
+  const isDistrictMissing = deliveryType === 'delivery' && !district;
 
   const onSubmit = async (data: CheckoutFormData) => {
     if (isClosed) return;
+
+    if (data.deliveryType === 'delivery' && !district) {
+      openDistrictModal();
+      return;
+    }
+
     setIsLoading(true);
 
     const generatedOrderId = `SN-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -238,6 +245,30 @@ export const CheckoutModal = () => {
             </div>
           )}
 
+          {/* Баннер: не выбран район доставки */}
+          {!isClosed && isDistrictMissing && (
+            <div className="px-5 pt-4 shrink-0">
+              <div className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl">
+                <MapPin className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-black text-amber-300">
+                    Не выбран район доставки
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Выберите ваш район, чтобы мы рассчитали стоимость доставки
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={openDistrictModal}
+                  className="shrink-0 px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 rounded-xl text-amber-300 font-bold text-xs transition"
+                >
+                  Выбрать
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Success Screen */}
           {orderSuccessId ? (
             <div className="p-8 sm:p-12 text-center space-y-6">
@@ -283,7 +314,7 @@ export const CheckoutModal = () => {
                         <Truck className={deliveryType === 'delivery' ? 'text-red-400' : ''} />
                         <div className="text-left">
                           <span className="font-extrabold text-sm block">Доставка</span>
-                          <span className="text-[11px] text-slate-400">{district?.name}</span>
+                          <span className="text-[11px] text-slate-400">{district?.name || 'Не выбран район'}</span>
                         </div>
                       </button>
                       <button type="button" onClick={() => setValue('deliveryType', 'pickup')}
@@ -329,7 +360,7 @@ export const CheckoutModal = () => {
                   {deliveryType === 'delivery' && (
                     <div className="space-y-3">
                       <label className="text-xs font-extrabold uppercase tracking-wider text-slate-400 block">
-                        3. Адрес доставки ({district?.name})
+                        3. Адрес доставки {district ? `(${district.name})` : ''}
                       </label>
                       <div className="grid grid-cols-12 gap-3">
                         <div className="col-span-8">
@@ -441,9 +472,13 @@ export const CheckoutModal = () => {
                         </div>
                       )}
                       <div className="flex justify-between">
-                        <span>Доставка ({district?.name}):</span>
+                        <span>Доставка {district ? `(${district.name})` : ''}:</span>
                         <span className={deliveryFee === 0 ? 'text-emerald-400 font-bold' : 'font-bold'}>
-                          {deliveryFee === 0 ? 'БЕСПЛАТНО' : `${deliveryFee} ₽`}
+                          {deliveryType === 'pickup'
+                            ? 'САМОВЫВОЗ'
+                            : deliveryFee === 0
+                            ? 'БЕСПЛАТНО'
+                            : `${deliveryFee} ₽`}
                         </span>
                       </div>
                       <div className="pt-3 border-t border-slate-800 flex justify-between items-baseline text-slate-50">
@@ -455,13 +490,15 @@ export const CheckoutModal = () => {
 
                   <button
                     type="submit"
-                    disabled={isLoading || !!isClosed}
+                    disabled={isLoading || !!isClosed || isDistrictMissing}
                     className="w-full py-4 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-600 text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-red-500/25 flex items-center justify-center space-x-2 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isLoading ? (
                       <><Loader2 className="w-5 h-5 animate-spin" /><span>Отправляем заказ...</span></>
                     ) : isClosed ? (
                       <><AlertTriangle className="w-5 h-5" /><span>Заведение закрыто</span></>
+                    ) : isDistrictMissing ? (
+                      <><MapPin className="w-5 h-5" /><span>Выберите район доставки</span></>
                     ) : (
                       <span>Подтвердить и оплатить ({finalTotal} ₽)</span>
                     )}
