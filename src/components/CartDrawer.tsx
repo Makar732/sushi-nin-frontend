@@ -29,6 +29,7 @@ export const CartDrawer = () => {
     removePromoCode,
     setCheckoutOpen,
     addToCart,
+    openDistrictModal,
   } = useStore();
 
   const [promoInput, setPromoInput] = useState('');
@@ -151,9 +152,18 @@ export const CartDrawer = () => {
                 </div>
                 <div>
                   <h2 className="text-xl font-black text-slate-50 tracking-tight">Ваша корзина</h2>
-                  <p className="text-xs text-slate-400">
-                    Район: <span className="text-slate-200 font-semibold">{district?.name || 'Заволжье'}</span>
-                  </p>
+                  {district ? (
+                    <p className="text-xs text-slate-400">
+                      Район: <span className="text-slate-200 font-semibold">{district.name}</span>
+                    </p>
+                  ) : (
+                    <button
+                      onClick={openDistrictModal}
+                      className="text-xs text-amber-400 font-semibold underline underline-offset-2"
+                    >
+                      Выбрать район доставки
+                    </button>
+                  )}
                 </div>
               </div>
               <button onClick={() => setCartOpen(false)} className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition">
@@ -346,7 +356,7 @@ export const CartDrawer = () => {
                     </div>
                   )}
                   <div className="flex justify-between">
-                    <span>Доставка ({district?.name}):</span>
+                    <span>Доставка{district ? ` (${district.name})` : ''}:</span>
                     <span className={deliveryFee === 0 ? 'text-emerald-400 font-bold' : 'font-bold'}>
                       {deliveryFee === 0 ? 'БЕСПЛАТНО' : `${deliveryFee} ₽`}
                     </span>
