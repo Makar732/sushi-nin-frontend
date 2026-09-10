@@ -1,10 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
+import Image from 'next/image';
 import { useStore } from '@/store/useStore';
-import { Product } from '@/data/products';
-import { X, ShoppingBag, Sparkles, Flame, Check, Plus, Minus, Info } from 'lucide-react';
+import { X, ShoppingBag, Sparkles, Flame, Plus, Minus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+
+const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&w=800&q=80';
 
 export const ProductDetailModal = () => {
   const { selectedProductForModal, setSelectedProductForModal, addToCart, cart, updateQuantity } = useStore();
@@ -21,6 +23,8 @@ export const ProductDetailModal = () => {
   const cartItemId = `${product.id}${variantKey ? `-${variantKey}` : ''}`;
   const cartItem = cart.find((i) => i.id === cartItemId);
   const currentQuantity = cartItem?.quantity || 0;
+
+  const [imgSrc, setImgSrc] = useState(product.imageUrl || `/images/${product.image_filename}` || FALLBACK_IMAGE);
 
   const handleAddToCart = () => {
     addToCart(product, variantKey, currentPrice);
@@ -44,28 +48,27 @@ export const ProductDetailModal = () => {
           </button>
 
           {/* Image Column */}
-          <div className="relative w-full md:w-1/2 h-64 md:h-auto bg-slate-950 flex items-center justify-center overflow-hidden shrink-0">
-            <img
-              src={product.imageUrl || `/images/${product.image_filename}`}
+          <div className="relative w-full md:w-1/2 h-64 md:h-auto bg-slate-950 overflow-hidden shrink-0">
+            <Image
+              src={imgSrc}
               alt={product.title}
-              className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
-              onError={(e) => {
-                // Fallback image if URL fails
-                (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&w=800&q=80';
-              }}
+              fill
+              sizes="(max-width: 768px) 100vw, 50vw"
+              priority
+              className="object-cover object-center"
+              onError={() => setImgSrc(FALLBACK_IMAGE)}
             />
             <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent md:bg-gradient-to-r" />
 
-            {/* Out of stock or tags overlay */}
             {!product.in_stock && (
-              <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center">
+              <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-10">
                 <span className="bg-red-600 text-white px-4 py-2 rounded-2xl font-bold text-sm uppercase tracking-wider">
                   Нет в наличии
                 </span>
               </div>
             )}
 
-            <div className="absolute top-4 left-4 flex flex-wrap gap-1.5">
+            <div className="absolute top-4 left-4 flex flex-wrap gap-1.5 z-10">
               <span className="bg-slate-900/90 text-slate-200 border border-slate-700 text-[11px] font-bold px-2.5 py-1 rounded-xl backdrop-blur">
                 {product.category}
               </span>
@@ -92,7 +95,6 @@ export const ProductDetailModal = () => {
                 {product.description}
               </p>
 
-              {/* Size Selector for Pizza */}
               {isPizza && (
                 <div className="mt-5 p-3 bg-slate-800/60 rounded-2xl border border-slate-700/60">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">

@@ -21,7 +21,7 @@ export async function GET(): Promise<NextResponse> {
 export async function PATCH(req: Request): Promise<NextResponse> {
   try {
     const body = await req.json();
-    const { id, inStock, title, description, price, price40cm, weight, category, tags } = body;
+    const { id, inStock, title, description, price, price40cm, weight, category, tags, imageUrl } = body;
 
     if (!id) {
       return NextResponse.json({ success: false, error: 'Product ID required' }, { status: 400 });
@@ -36,6 +36,7 @@ export async function PATCH(req: Request): Promise<NextResponse> {
     if (weight !== undefined) updateData.weight = weight;
     if (category !== undefined) updateData.category = category;
     if (tags !== undefined) updateData.tags = tags;
+    if (imageUrl !== undefined) updateData.imageUrl = imageUrl || null;
 
     await db.update(products).set(updateData).where(eq(products.id, id));
 

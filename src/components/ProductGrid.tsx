@@ -60,6 +60,10 @@ export const ProductGrid: React.FC<ProductGridProps> = ({ initialProducts }) => 
     );
   }
 
+  // Сквозной счётчик по всем группам — приоритет (eager loading) получают
+  // только первые 4 карточки на всей странице (обычно видны на первом экране)
+  let globalIndex = 0;
+
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-4 py-6 sm:py-8 space-y-10 sm:space-y-12">
       {categorizedGroups.map((group) => {
@@ -85,9 +89,13 @@ export const ProductGrid: React.FC<ProductGridProps> = ({ initialProducts }) => 
 
             {/* GRID: 2 колонки на мобилке, 3 на md, 4 на xl */}
             <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-4 lg:gap-6">
-              {group.items.map((product) => (
-                <ProductCard key={product.id} product={product} />
-              ))}
+              {group.items.map((product) => {
+                const isPriority = globalIndex < 4;
+                globalIndex += 1;
+                return (
+                  <ProductCard key={product.id} product={product} priority={isPriority} />
+                );
+              })}
             </div>
           </section>
         );

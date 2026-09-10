@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { CATEGORIES } from '@/data/categories';
+import { ImageUploader } from '@/components/admin/ImageUploader';
 import {
   Plus, Search, Edit3, Trash2, CheckCircle2,
   XCircle, Loader2, X, Save
@@ -27,7 +28,7 @@ const EMPTY_FORM = {
   price: '',
   price40cm: '',
   weight: '300 г',
-  imageUrl: '',
+  imageUrl: '' as string | null,
   tags: [] as string[],
 };
 
@@ -48,6 +49,7 @@ export default function AdminMenuPage() {
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [isSaving, setIsSaving] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [tempNewId, setTempNewId] = useState<string>('');
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -89,6 +91,8 @@ export default function AdminMenuPage() {
   const openCreate = () => {
     setEditingProduct(null);
     setFormData(EMPTY_FORM);
+    // Генерируем временный ID для именования файлов ещё не созданного блюда
+    setTempNewId(`temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
     setIsModalOpen(true);
   };
 
@@ -101,7 +105,7 @@ export default function AdminMenuPage() {
       price: String(product.price),
       price40cm: product.price40cm ? String(product.price40cm) : '',
       weight: product.weight || '',
-      imageUrl: product.imageUrl || '',
+      imageUrl: product.imageUrl || null,
       tags: product.tags || [],
     });
     setIsModalOpen(true);
@@ -216,7 +220,7 @@ export default function AdminMenuPage() {
         </select>
       </div>
 
-      {/* Быстрый стоп-лист — только товары на стопе вверху */}
+      {/* Быстрый стоп-лист */}
       {stopListCount > 0 && (
         <div className="p-3 bg-red-950/30 border border-red-500/20 rounded-2xl">
           <p className="text-xs font-bold text-red-400 mb-2 uppercase tracking-wider">
@@ -268,7 +272,6 @@ export default function AdminMenuPage() {
                     (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&w=800&q=80';
                   }}
                 />
-                {/* Стоп-лист оверлей */}
                 {!product.inStock && (
                   <div className="absolute inset-0 bg-slate-950/70 flex items-center justify-center">
                     <span className="text-red-400 font-black text-xs uppercase tracking-wider border border-red-500/50 px-2 py-1 rounded-lg">
@@ -276,7 +279,6 @@ export default function AdminMenuPage() {
                     </span>
                   </div>
                 )}
-                {/* Бейджи */}
                 <div className="absolute top-2 left-2 flex flex-col gap-1">
                   {product.tags?.includes('hit') && (
                     <span className="text-[9px] font-black bg-red-600/90 text-white px-1.5 py-0.5 rounded-md">💥 ХИТ</span>
@@ -308,9 +310,7 @@ export default function AdminMenuPage() {
                   <span className="text-[10px] text-slate-500 ml-auto">{product.weight}</span>
                 </div>
 
-                {/* Кнопки */}
                 <div className="flex gap-2 mt-auto pt-2 border-t border-slate-700/60">
-                  {/* Тумблер стоп-листа */}
                   <button
                     onClick={() => toggleStock(product)}
                     disabled={togglingId === product.id}
@@ -459,26 +459,16 @@ export default function AdminMenuPage() {
                 />
               </div>
 
-              {/* Фото URL */}
+              {/* Фото — новый загрузчик вместо текстового поля */}
               <div>
-                <label className="text-xs font-bold uppercase text-slate-400 block mb-1">
-                  Ссылка на фото
+                <label className="text-xs font-bold uppercase text-slate-400 block mb-2">
+                  Фотография блюда
                 </label>
-                <input
-                  type="url"
+                <ImageUploader
                   value={formData.imageUrl}
-                  onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
-                  placeholder="https://..."
-                  className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-100 focus:outline-none focus:border-red-500"
+                  productId={editingProduct?.id || tempNewId}
+                  onChange={(url) => setFormData((prev) => ({ ...prev, imageUrl: url }))}
                 />
-                {formData.imageUrl && (
-                  <img
-                    src={formData.imageUrl}
-                    alt="preview"
-                    className="mt-2 h-20 w-full object-cover rounded-xl border border-slate-700"
-                    onError={(e) => (e.currentTarget.style.display = 'none')}
-                  />
-                )}
               </div>
 
               {/* Бейджи */}

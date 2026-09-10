@@ -1,17 +1,22 @@
 'use client';
 
 import React, { useState } from 'react';
+import Image from 'next/image';
 import { Product } from '@/data/products';
 import { useStore } from '@/store/useStore';
 import { Plus, Minus, ShoppingBag } from 'lucide-react';
 
+const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&w=800&q=80';
+
 interface ProductCardProps {
   product: Product;
+  priority?: boolean;
 }
 
-export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
+export const ProductCard: React.FC<ProductCardProps> = ({ product, priority = false }) => {
   const { addToCart, cart, updateQuantity, setSelectedProductForModal } = useStore();
   const [selectedVariant, setSelectedVariant] = useState<'34 см' | '40 см'>('34 см');
+  const [imgSrc, setImgSrc] = useState(product.imageUrl || `/images/${product.image_filename}` || FALLBACK_IMAGE);
 
   const isPizza = product.category === 'Пицца';
   const currentPrice = isPizza && selectedVariant === '40 см'
@@ -48,18 +53,19 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
       <div>
         {/* Image */}
         <div className="relative w-full h-28 sm:h-44 md:h-48 rounded-xl overflow-hidden bg-slate-900 mb-2 sm:mb-3">
-          <img
-            src={product.imageUrl || `/images/${product.image_filename}`}
+          <Image
+            src={imgSrc}
             alt={product.title}
-            className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
-            loading="lazy"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&w=800&q=80';
-            }}
+            fill
+            sizes="(max-width: 640px) 50vw, (max-width: 768px) 50vw, (max-width: 1280px) 33vw, 25vw"
+            priority={priority}
+            loading={priority ? undefined : 'lazy'}
+            className="object-cover object-center group-hover:scale-105 transition-transform duration-500"
+            onError={() => setImgSrc(FALLBACK_IMAGE)}
           />
 
           {!product.in_stock && (
-            <div className="absolute inset-0 bg-slate-950/80 flex items-center justify-center">
+            <div className="absolute inset-0 bg-slate-950/80 flex items-center justify-center z-10">
               <span className="bg-red-950/90 text-red-400 border border-red-500/50 px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase">
                 Нет в наличии
               </span>
@@ -91,7 +97,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           </div>
 
           {/* Weight */}
-          <span className="absolute bottom-1.5 right-1.5 bg-slate-900/90 text-slate-300 text-[10px] font-bold px-2 py-0.5 rounded-lg border border-slate-700 backdrop-blur">
+          <span className="absolute bottom-1.5 right-1.5 bg-slate-900/90 text-slate-300 text-[10px] font-bold px-2 py-0.5 rounded-lg border border-slate-700 backdrop-blur z-10">
             {product.weight}
           </span>
         </div>
@@ -101,7 +107,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           <h3 className="text-xs sm:text-base font-bold text-slate-100 group-hover:text-red-400 transition-colors line-clamp-2 leading-tight">
             {product.title}
           </h3>
-          {/* Описание только на десктопе */}
           <p className="hidden sm:block text-xs text-slate-400 line-clamp-2 leading-relaxed">
             {product.description}
           </p>
