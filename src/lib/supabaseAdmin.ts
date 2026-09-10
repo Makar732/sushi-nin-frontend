@@ -1,7 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+// Убираем возможные пробелы/кавычки/хвостовой слэш из URL —
+// частая причина "Invalid path specified in request URL"
+const rawUrl = process.env.SUPABASE_URL?.trim();
+const supabaseUrl = rawUrl?.replace(/\/+$/, '');
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 
 if (!supabaseUrl || !serviceRoleKey) {
   throw new Error(
@@ -9,8 +12,14 @@ if (!supabaseUrl || !serviceRoleKey) {
   );
 }
 
-// ⚠️ Этот клиент использует Service Role Key — он ДОЛЖЕН импортироваться
-// только в серверном коде (API routes), никогда в клиентских компонентах!
+if (!/^https:\/\/[a-z0-9]+\.supabase\.co$/.test(supabaseUrl)) {
+  console.warn(
+    '⚠️ SUPABASE_URL выглядит подозрительно:',
+    supabaseUrl,
+    '— проверьте, что это чистый URL вида https://xxxxx.supabase.co без хвостового слэша и кавычек.'
+  );
+}
+
 export const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
   auth: {
     autoRefreshToken: false,
@@ -20,12 +29,6 @@ export const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
 
 export const DISHES_BUCKET = 'dishes';
 
-/**
- * Извлекает путь файла внутри бакета из публичного URL Supabase Storage.
- * Пример: https://xxx.supabase.co/storage/v1/object/public/dishes/dish_123.webp
- * Вернёт: dish_123.webp
- * Если URL не относится к нашему бакету — вернёт null.
- */
 export function extractStoragePath(publicUrl: string | null | undefined): string | null {
   if (!publicUrl) return null;
   const marker = `/storage/v1/object/public/${DISHES_BUCKET}/`;

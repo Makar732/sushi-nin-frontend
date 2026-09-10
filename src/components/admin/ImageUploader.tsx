@@ -2,11 +2,11 @@
 
 import React, { useState, useRef, useCallback } from 'react';
 import imageCompression from 'browser-image-compression';
-import { Upload, Loader2, CheckCircle2, RefreshCw, Trash2, AlertCircle, ImageIcon, X } from 'lucide-react';
+import { Upload, Loader2, CheckCircle2, RefreshCw, Trash2, AlertCircle, X } from 'lucide-react';
 
 interface ImageUploaderProps {
   value: string | null | undefined;
-  productId: string; // временный ID для новых блюд или реальный ID для существующих
+  productId: string;
   onChange: (url: string | null) => void;
 }
 
@@ -33,13 +33,11 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ value, productId, 
 
   const processAndUpload = useCallback(
     async (file: File) => {
-      // Валидация MIME-типа
       if (!ALLOWED_MIME_TYPES.includes(file.type)) {
         showToast('error', 'Недопустимый формат. Используйте JPEG, PNG или WebP');
         return;
       }
 
-      // Валидация исходного размера
       if (file.size > MAX_ORIGINAL_SIZE_MB * 1024 * 1024) {
         showToast('error', `Файл слишком большой (макс. ${MAX_ORIGINAL_SIZE_MB} МБ)`);
         return;
@@ -48,7 +46,6 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ value, productId, 
       setStatus('compressing');
 
       try {
-        // Сжатие + конвертация в WebP прямо в браузере
         const compressedFile = await imageCompression(file, {
           maxWidthOrHeight: 800,
           maxSizeMB: 0.12,
@@ -133,9 +130,16 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ value, productId, 
               : 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
           }`}
         >
-          {toast.type === 'error' ? <AlertCircle className="w-3.5 h-3.5 shrink-0" /> : <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />}
+          {toast.type === 'error' ? (
+            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+          ) : (
+            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+          )}
           <span className="flex-1">{toast.message}</span>
-          <button onClick={() => setToast(null)} className="shrink-0 opacity-70 hover:opacity-100">
+          <button
+            onClick={() => setToast(null)}
+            className="shrink-0 opacity-70 hover:opacity-100"
+          >
             <X className="w-3 h-3" />
           </button>
         </div>
@@ -153,7 +157,10 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ value, productId, 
         // ==================== СОСТОЯНИЕ: ПУСТО ====================
         <div
           onClick={() => !isBusy && fileInputRef.current?.click()}
-          onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsDragging(true);
+          }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
           className={`aspect-square w-full max-w-[200px] rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-2 cursor-pointer transition ${
@@ -187,7 +194,11 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ value, productId, 
         // ==================== СОСТОЯНИЕ: ЗАГРУЖЕНО ====================
         <div className="w-full max-w-[200px] space-y-2">
           <div className="relative aspect-square rounded-2xl overflow-hidden border border-slate-700 bg-slate-900">
-            <img src={value} alt="Превью блюда" className="w-full h-full object-cover" />
+            <img
+              src={value}
+              alt="Превью блюда"
+              className="w-full h-full object-cover"
+            />
             {isBusy && (
               <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center">
                 <Loader2 className="w-6 h-6 text-white animate-spin" />
@@ -223,6 +234,20 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ value, productId, 
           </div>
         </div>
       )}
+
+      {/* Подсказка для управляющего — отображается всегда под виджетом */}
+      <div className="mt-2 max-w-[200px] text-[10px] leading-relaxed text-slate-500 space-y-0.5">
+        <p>
+          📄 <span className="text-slate-400 font-semibold">Форматы:</span> JPG, PNG, WEBP
+        </p>
+        <p>
+          ⚖️ <span className="text-slate-400 font-semibold">До 15 МБ</span> — сожмём
+          автоматически до ~100 КБ
+        </p>
+        <p>
+          📐 <span className="text-slate-400 font-semibold">Квадрат 1:1</span>, от 600×600 px
+        </p>
+      </div>
     </div>
   );
 };
