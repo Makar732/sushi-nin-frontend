@@ -37,7 +37,7 @@ export const MobileOrderBanner = () => {
           </div>
           <div className="flex items-center gap-2">
             <span className="font-mono text-sky-300 font-black text-sm">{elapsed}</span>
-            <ChevronRight className="w-4 h-4 text-sky-400" />
+            <ChevronRight className="w-4 h-4 text-sky-400 shrink-0" />
           </div>
         </button>
       </motion.div>

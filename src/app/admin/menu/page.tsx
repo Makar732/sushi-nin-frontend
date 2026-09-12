@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { CATEGORIES } from '@/data/categories';
 import { ImageUploader } from '@/components/admin/ImageUploader';
+import { FALLBACK_IMAGE } from '@/lib/constants';
 import {
   Plus, Search, Edit3, Trash2, CheckCircle2,
   XCircle, Loader2, X, Save
@@ -91,7 +92,6 @@ export default function AdminMenuPage() {
   const openCreate = () => {
     setEditingProduct(null);
     setFormData(EMPTY_FORM);
-    // Генерируем временный ID для именования файлов ещё не созданного блюда
     setTempNewId(`temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
     setIsModalOpen(true);
   };
@@ -178,15 +178,15 @@ export default function AdminMenuPage() {
         <div>
           <h1 className="text-2xl font-black text-white">🍔 Меню & Стоп-лист</h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            {productList.length} позиций · 
-            <span className="text-red-400 font-bold"> {stopListCount} на стопе</span>
+            {productList.length} позиций ·{' '}
+            <span className="text-red-400 font-bold">{stopListCount} на стопе</span>
           </p>
         </div>
         <button
           onClick={openCreate}
           className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-600 text-white font-bold rounded-xl text-sm shadow-lg shadow-red-500/25 transition active:scale-95"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-4 h-4 shrink-0" />
           Добавить блюдо
         </button>
       </div>
@@ -194,7 +194,7 @@ export default function AdminMenuPage() {
       {/* Поиск и фильтр */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 min-w-[180px]">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none shrink-0" />
           <input
             type="text"
             value={search}
@@ -227,17 +227,19 @@ export default function AdminMenuPage() {
             ⛔ На стоп-листе ({stopListCount})
           </p>
           <div className="flex flex-wrap gap-2">
-            {productList.filter((p) => !p.inStock).map((p) => (
-              <button
-                key={p.id}
-                onClick={() => toggleStock(p)}
-                className="px-3 py-1.5 bg-red-500/20 border border-red-500/40 rounded-xl text-xs font-bold text-red-300 hover:bg-red-500/30 transition flex items-center gap-1.5"
-              >
-                <XCircle className="w-3 h-3" />
-                {p.title}
-                <span className="text-red-500 font-black ml-1">→ вернуть</span>
-              </button>
-            ))}
+            {productList
+              .filter((p) => !p.inStock)
+              .map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => toggleStock(p)}
+                  className="px-3 py-1.5 bg-red-500/20 border border-red-500/40 rounded-xl text-xs font-bold text-red-300 hover:bg-red-500/30 transition flex items-center gap-1.5"
+                >
+                  <XCircle className="w-3 h-3 shrink-0" />
+                  {p.title}
+                  <span className="text-red-500 font-black ml-1">→ вернуть</span>
+                </button>
+              ))}
           </div>
         </div>
       )}
@@ -245,7 +247,7 @@ export default function AdminMenuPage() {
       {/* Сетка товаров */}
       {isLoading ? (
         <div className="flex items-center justify-center py-20">
-          <Loader2 className="w-8 h-8 animate-spin text-red-400" />
+          <Loader2 className="w-8 h-8 animate-spin text-red-400 shrink-0" />
         </div>
       ) : filteredProducts.length === 0 ? (
         <div className="text-center py-16 text-slate-400">
@@ -263,13 +265,13 @@ export default function AdminMenuPage() {
               }`}
             >
               {/* Фото */}
-              <div className="relative h-32 bg-slate-900">
+              <div className="relative h-32 bg-slate-800">
                 <img
-                  src={product.imageUrl || 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&w=800&q=80'}
+                  src={product.imageUrl || FALLBACK_IMAGE}
                   alt={product.title}
                   className="w-full h-full object-cover"
                   onError={(e) => {
-                    (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&w=800&q=80';
+                    (e.target as HTMLImageElement).src = FALLBACK_IMAGE;
                   }}
                 />
                 {!product.inStock && (
@@ -281,23 +283,33 @@ export default function AdminMenuPage() {
                 )}
                 <div className="absolute top-2 left-2 flex flex-col gap-1">
                   {product.tags?.includes('hit') && (
-                    <span className="text-[9px] font-black bg-red-600/90 text-white px-1.5 py-0.5 rounded-md">💥 ХИТ</span>
+                    <span className="text-[9px] font-black bg-red-600/90 text-white px-1.5 py-0.5 rounded-md">
+                      💥 ХИТ
+                    </span>
                   )}
                   {product.tags?.includes('spicy') && (
-                    <span className="text-[9px] font-black bg-amber-600/90 text-white px-1.5 py-0.5 rounded-md">🌶️ ОСТРО</span>
+                    <span className="text-[9px] font-black bg-amber-600/90 text-white px-1.5 py-0.5 rounded-md">
+                      🌶️ ОСТРО
+                    </span>
                   )}
                   {product.tags?.includes('baked') && (
-                    <span className="text-[9px] font-black bg-orange-600/90 text-white px-1.5 py-0.5 rounded-md">🧀 ЗАПЕЧ.</span>
+                    <span className="text-[9px] font-black bg-orange-600/90 text-white px-1.5 py-0.5 rounded-md">
+                      🧀 ЗАПЕЧ.
+                    </span>
                   )}
                   {product.tags?.includes('nomeat') && (
-                    <span className="text-[9px] font-black bg-emerald-600/90 text-white px-1.5 py-0.5 rounded-md">🥑 БЕЗ МЯСА</span>
+                    <span className="text-[9px] font-black bg-emerald-600/90 text-white px-1.5 py-0.5 rounded-md">
+                      🥑 БЕЗ МЯСА
+                    </span>
                   )}
                 </div>
               </div>
 
               <div className="p-3 flex flex-col flex-1 gap-2">
                 <div>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase">{product.category}</span>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase">
+                    {product.category}
+                  </span>
                   <h3 className="text-sm font-bold text-white leading-tight">{product.title}</h3>
                   <p className="text-xs text-slate-400 line-clamp-1 mt-0.5">{product.description}</p>
                 </div>
@@ -321,11 +333,15 @@ export default function AdminMenuPage() {
                     }`}
                   >
                     {togglingId === product.id ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
+                      <Loader2 className="w-3 h-3 animate-spin shrink-0" />
                     ) : product.inStock ? (
-                      <><CheckCircle2 className="w-3 h-3" /> В наличии</>
+                      <>
+                        <CheckCircle2 className="w-3 h-3 shrink-0" /> В наличии
+                      </>
                     ) : (
-                      <><XCircle className="w-3 h-3" /> На стопе</>
+                      <>
+                        <XCircle className="w-3 h-3 shrink-0" /> На стопе
+                      </>
                     )}
                   </button>
 
@@ -333,14 +349,14 @@ export default function AdminMenuPage() {
                     onClick={() => openEdit(product)}
                     className="p-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-slate-300 transition"
                   >
-                    <Edit3 className="w-3.5 h-3.5" />
+                    <Edit3 className="w-3.5 h-3.5 shrink-0" />
                   </button>
 
                   <button
                     onClick={() => handleDelete(product.id)}
                     className="p-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl border border-red-500/20 transition"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Trash2 className="w-3.5 h-3.5 shrink-0" />
                   </button>
                 </div>
               </div>
@@ -361,7 +377,7 @@ export default function AdminMenuPage() {
                 onClick={() => setIsModalOpen(false)}
                 className="p-1.5 text-slate-400 hover:text-white rounded-full hover:bg-slate-800"
               >
-                <X className="w-4 h-4" />
+                <X className="w-4 h-4 shrink-0" />
               </button>
             </div>
 
@@ -393,7 +409,9 @@ export default function AdminMenuPage() {
                     className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-100 focus:outline-none focus:border-red-500"
                   >
                     {CATEGORIES.map((c) => (
-                      <option key={c.id} value={c.name}>{c.name}</option>
+                      <option key={c.id} value={c.name}>
+                        {c.name}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -459,7 +477,7 @@ export default function AdminMenuPage() {
                 />
               </div>
 
-              {/* Фото — новый загрузчик вместо текстового поля */}
+              {/* Фото */}
               <div>
                 <label className="text-xs font-bold uppercase text-slate-400 block mb-2">
                   Фотография блюда
@@ -509,9 +527,11 @@ export default function AdminMenuPage() {
                   className="flex-1 py-2.5 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-600 text-white font-black rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-500/25 disabled:opacity-50 transition"
                 >
                   {isSaving ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="w-4 h-4 animate-spin shrink-0" />
                   ) : (
-                    <><Save className="w-4 h-4" /> Сохранить</>
+                    <>
+                      <Save className="w-4 h-4 shrink-0" /> Сохранить
+                    </>
                   )}
                 </button>
               </div>

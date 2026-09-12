@@ -3,10 +3,9 @@
 import React, { useState } from 'react';
 import Image from 'next/image';
 import { useStore } from '@/store/useStore';
+import { FALLBACK_IMAGE } from '@/lib/constants';
 import { X, ShoppingBag, Sparkles, Flame, Plus, Minus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-
-const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&w=800&q=80';
 
 export const ProductDetailModal = () => {
   const { selectedProductForModal, setSelectedProductForModal, addToCart, cart, updateQuantity } = useStore();
@@ -17,14 +16,19 @@ export const ProductDetailModal = () => {
 
   const product = selectedProductForModal;
   const isPizza = product.category === 'Пицца';
-  const currentPrice = isPizza && selectedVariant === '40 см' ? (product.price40cm || Math.round(product.price * 1.35)) : product.price;
+  const currentPrice = isPizza && selectedVariant === '40 см'
+    ? (product.price40cm || Math.round(product.price * 1.35))
+    : product.price;
 
   const variantKey = isPizza ? selectedVariant : undefined;
   const cartItemId = `${product.id}${variantKey ? `-${variantKey}` : ''}`;
   const cartItem = cart.find((i) => i.id === cartItemId);
   const currentQuantity = cartItem?.quantity || 0;
 
-  const [imgSrc, setImgSrc] = useState(product.imageUrl || `/images/${product.image_filename}` || FALLBACK_IMAGE);
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const [imgSrc, setImgSrc] = useState(
+    product.imageUrl || `/images/${product.image_filename}` || FALLBACK_IMAGE
+  );
 
   const handleAddToCart = () => {
     addToCart(product, variantKey, currentPrice);
@@ -44,11 +48,11 @@ export const ProductDetailModal = () => {
             onClick={() => setSelectedProductForModal(null)}
             className="absolute top-4 right-4 z-20 p-2 bg-slate-900/80 backdrop-blur border border-slate-700 text-slate-400 rounded-full hover:text-white transition"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5 shrink-0" />
           </button>
 
           {/* Image Column */}
-          <div className="relative w-full md:w-1/2 h-64 md:h-auto bg-slate-950 overflow-hidden shrink-0">
+          <div className="gpu-fix relative w-full md:w-1/2 h-64 md:h-auto bg-slate-950 overflow-hidden shrink-0">
             <Image
               src={imgSrc}
               alt={product.title}
@@ -83,7 +87,7 @@ export const ProductDetailModal = () => {
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-xs font-bold text-red-400 flex items-center gap-1 uppercase tracking-wider">
-                  <Flame className="w-3.5 h-3.5 fill-red-400" /> СушиМин Шедевр
+                  <Flame className="w-3.5 h-3.5 fill-red-400 shrink-0" /> СушиНин Шедевр
                 </span>
               </div>
 
@@ -126,27 +130,29 @@ export const ProductDetailModal = () => {
               )}
 
               {/* AI Image Generation Prompt Accordion */}
-              <div className="mt-5">
-                <button
-                  onClick={() => setShowAiPrompt(!showAiPrompt)}
-                  className="flex items-center space-x-1.5 text-xs text-sky-400 hover:text-sky-300 font-semibold transition"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>{showAiPrompt ? 'Скрыть AI Art Prompt' : 'Показать AI Art Direction Prompt'}</span>
-                </button>
-
-                {showAiPrompt && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="mt-2 p-3 bg-slate-950/80 rounded-xl border border-sky-500/20 text-[11px] text-slate-300 font-mono leading-relaxed"
+              {product.ai_image_prompt && (
+                <div className="mt-5">
+                  <button
+                    onClick={() => setShowAiPrompt(!showAiPrompt)}
+                    className="flex items-center space-x-1.5 text-xs text-sky-400 hover:text-sky-300 font-semibold transition"
                   >
-                    <span className="text-sky-400 font-bold block mb-1">Midjourney / Grok 3 Prompt:</span>
-                    {product.ai_image_prompt}
-                  </motion.div>
-                )}
-              </div>
+                    <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                    <span>{showAiPrompt ? 'Скрыть AI Art Prompt' : 'Показать AI Art Direction Prompt'}</span>
+                  </button>
+
+                  {showAiPrompt && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="mt-2 p-3 bg-slate-950/80 rounded-xl border border-sky-500/20 text-[11px] text-slate-300 font-mono leading-relaxed"
+                    >
+                      <span className="text-sky-400 font-bold block mb-1">Midjourney / Grok 3 Prompt:</span>
+                      {product.ai_image_prompt}
+                    </motion.div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Bottom Actions */}
@@ -161,18 +167,18 @@ export const ProductDetailModal = () => {
                   <div className="flex items-center space-x-3 bg-slate-800 border border-slate-700 p-1.5 rounded-2xl">
                     <button
                       onClick={() => updateQuantity(cartItemId, -1)}
-                      className="w-8 h-8 rounded-xl bg-slate-700 hover:bg-slate-600 text-white flex items-center justify-center transition"
+                      className="w-8 h-8 rounded-xl bg-slate-700 hover:bg-slate-600 text-white flex items-center justify-center transition shrink-0"
                     >
-                      <Minus className="w-4 h-4" />
+                      <Minus className="w-4 h-4 shrink-0" />
                     </button>
                     <span className="font-extrabold text-white text-base px-2">
                       {currentQuantity}
                     </span>
                     <button
                       onClick={() => updateQuantity(cartItemId, 1)}
-                      className="w-8 h-8 rounded-xl bg-red-600 hover:bg-red-500 text-white flex items-center justify-center transition"
+                      className="w-8 h-8 rounded-xl bg-red-600 hover:bg-red-500 text-white flex items-center justify-center transition shrink-0"
                     >
-                      <Plus className="w-4 h-4" />
+                      <Plus className="w-4 h-4 shrink-0" />
                     </button>
                   </div>
                 ) : (
@@ -180,7 +186,7 @@ export const ProductDetailModal = () => {
                     onClick={handleAddToCart}
                     className="flex items-center space-x-2 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-600 text-white font-extrabold px-6 py-3 rounded-2xl shadow-lg shadow-red-500/25 active:scale-95 transition"
                   >
-                    <ShoppingBag className="w-4 h-4" />
+                    <ShoppingBag className="w-4 h-4 shrink-0" />
                     <span>В корзину</span>
                   </button>
                 )
