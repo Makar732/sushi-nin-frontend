@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+@layer base {
+  /* Критический фикс: WebKit/iOS Safari вычисляет flex-shrink для inline SVG
+     иначе, чем Chromium. Без явного flex-shrink: 0 иконки внутри flex-контейнеров
+     (кнопки, навигация, горизонтальный скролл) могут схлопнуться до 0×0px
+     и полностью исчезнуть на мобильных, оставаясь видимыми на десктопном Chrome. */
+  svg {
+    flex-shrink: 0;
+  }
+}
+
 @layer utilities {
   /* Hide scrollbar for Chrome, Safari and Opera */
   .no-scrollbar::-webkit-scrollbar {
@@ -26,6 +36,19 @@
   }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: rgba(239, 68, 68, 0.8);
+  }
+
+  /* Форсирует создание отдельного GPU-слоя для элементов с rounded corners +
+     overflow-hidden + CSS transform (используется для картинок товаров).
+     Профилактика от известного бага компоновки в WebKit/iOS Safari,
+     при котором такие элементы рендерятся сплошным чёрным цветом
+     до принудительного перерисовывания. См. Пункт 2 чек-листа. */
+  .gpu-fix {
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    isolation: isolate;
   }
 }
 

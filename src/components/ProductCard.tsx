@@ -52,7 +52,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, priority = fa
 
       <div>
         {/* Image */}
-        <div className="relative w-full h-28 sm:h-44 md:h-48 rounded-xl overflow-hidden bg-slate-900 mb-2 sm:mb-3">
+        <div className="gpu-fix relative w-full h-28 sm:h-44 md:h-48 rounded-xl overflow-hidden bg-slate-900 mb-2 sm:mb-3">
           <Image
             src={imgSrc}
             alt={product.title}
@@ -153,24 +153,24 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, priority = fa
             >
               <button
                 onClick={handleDecrease}
-                className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center transition active:scale-90"
+                className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center transition active:scale-90 shrink-0"
               >
-                <Minus className="w-3 h-3" />
+                <Minus className="w-3 h-3 shrink-0" />
               </button>
               <span className="font-extrabold text-white text-xs px-1">
                 {currentQuantity}
               </span>
               <button
                 onClick={handleIncrease}
-                className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-red-600 hover:bg-red-500 text-white flex items-center justify-center transition active:scale-90"
+                className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-red-600 hover:bg-red-500 text-white flex items-center justify-center transition active:scale-90 shrink-0"
               >
-                <Plus className="w-3 h-3" />
+                <Plus className="w-3 h-3 shrink-0" />
               </button>
             </div>
           ) : (
             <button
               onClick={handleAddToCart}
-              className="flex items-center gap-1 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-600 text-white font-extrabold text-[10px] sm:text-xs px-2 sm:px-3.5 py-2 sm:py-2.5 rounded-xl shadow-md shadow-red-500/20 active:scale-95 transition"
+              className="flex items-center gap-1 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-600 text-white font-extrabold text-[10px] sm:text-xs px-2 sm:px-3.5 py-2 sm:py-2.5 rounded-xl shadow-md shadow-red-500/20 active:scale-95 transition shrink-0"
             >
               <ShoppingBag className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
               <span className="hidden xs:inline sm:inline">В корзину</span>

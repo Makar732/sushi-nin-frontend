@@ -23,10 +23,10 @@ export const CategoryNav = () => {
         <div className="relative flex items-center">
           <button
             onClick={() => scroll('left')}
-            className="hidden md:flex absolute -left-3 z-10 p-1.5 bg-slate-800/90 border border-slate-700 rounded-full text-slate-300 hover:text-white hover:bg-slate-700 shadow-md"
+            className="hidden md:flex absolute -left-3 z-10 p-1.5 bg-slate-800/90 border border-slate-700 rounded-full text-slate-300 hover:text-white hover:bg-slate-700 shadow-md shrink-0"
             aria-label="Прокрутить влево"
           >
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-4 h-4 shrink-0" />
           </button>
 
           <div
@@ -42,7 +42,7 @@ export const CategoryNav = () => {
                   : 'bg-slate-800/80 text-slate-300 border-slate-700/60 hover:bg-slate-800 hover:text-white'
               }`}
             >
-              <Layers className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <Layers className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
               <span>Всё меню</span>
             </button>
 
@@ -58,7 +58,7 @@ export const CategoryNav = () => {
                       : 'bg-slate-800/80 text-slate-300 border-slate-700/60 hover:bg-slate-800 hover:text-white'
                   }`}
                 >
-                  <span className="text-sm">{cat.icon}</span>
+                  <span className="text-sm shrink-0">{cat.icon}</span>
                   <span>{cat.name}</span>
                 </button>
               );
@@ -67,10 +67,10 @@ export const CategoryNav = () => {
 
           <button
             onClick={() => scroll('right')}
-            className="hidden md:flex absolute -right-3 z-10 p-1.5 bg-slate-800/90 border border-slate-700 rounded-full text-slate-300 hover:text-white hover:bg-slate-700 shadow-md"
+            className="hidden md:flex absolute -right-3 z-10 p-1.5 bg-slate-800/90 border border-slate-700 rounded-full text-slate-300 hover:text-white hover:bg-slate-700 shadow-md shrink-0"
             aria-label="Прокрутить вправо"
           >
-            <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="w-4 h-4 shrink-0" />
           </button>
         </div>
 
