@@ -2,11 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { useStore } from '@/store/useStore';
+import { FALLBACK_IMAGE } from '@/lib/constants';
 import { X, Trash2, Plus, Minus, ShoppingBag, Truck, Tag, ArrowRight, Sparkles, AlertCircle, Gift, Check, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const FREE_DELIVERY_THRESHOLD = 700;
-const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&w=800&q=80';
 
 interface GiftProduct {
   id: string;
@@ -148,7 +148,7 @@ export const CartDrawer = () => {
             <div className="p-4 sm:p-6 border-b border-slate-800 bg-slate-900/90 flex items-center justify-between shrink-0">
               <div className="flex items-center space-x-3">
                 <div className="p-2.5 bg-red-500/10 border border-red-500/30 rounded-2xl text-red-400">
-                  <ShoppingBag className="w-5 h-5" />
+                  <ShoppingBag className="w-5 h-5 shrink-0" />
                 </div>
                 <div>
                   <h2 className="text-xl font-black text-slate-50 tracking-tight">Ваша корзина</h2>
@@ -167,7 +167,7 @@ export const CartDrawer = () => {
                 </div>
               </div>
               <button onClick={() => setCartOpen(false)} className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition">
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5 shrink-0" />
               </button>
             </div>
 
@@ -175,7 +175,7 @@ export const CartDrawer = () => {
             <div className="px-4 sm:px-6 py-3 bg-slate-950/60 border-b border-slate-800/80 space-y-2 shrink-0">
               <div className="flex items-center justify-between text-xs font-semibold mb-1">
                 <span className="flex items-center gap-1.5 text-slate-300">
-                  <Truck className="w-4 h-4 text-sky-400" />
+                  <Truck className="w-4 h-4 text-sky-400 shrink-0" />
                   {remainingForFree === 0 ? 'Доставка бесплатна!' : 'До бесплатной доставки:'}
                 </span>
                 <span className={remainingForFree === 0 ? 'text-emerald-400 font-black' : 'text-red-400 font-black'}>
@@ -198,7 +198,7 @@ export const CartDrawer = () => {
                 <>
                   <div className={`flex items-center justify-between text-xs font-semibold pt-1 ${giftUnlocked ? 'text-amber-400' : 'text-slate-500'}`}>
                     <span className="flex items-center gap-1.5">
-                      <Gift className="w-4 h-4" />
+                      <Gift className="w-4 h-4 shrink-0" />
                       {giftUnlocked ? '🎁 Выберите подарок!' : `Подарок от ${giftMinAmount} ₽`}
                     </span>
                     {!giftUnlocked && <span className="text-slate-500">Ещё {remainingForGift} ₽</span>}
@@ -226,11 +226,18 @@ export const CartDrawer = () => {
                             >
                               {isChosen && (
                                 <span className="absolute top-1 right-1 w-4 h-4 bg-amber-400 rounded-full flex items-center justify-center">
-                                  <Check className="w-2.5 h-2.5 text-slate-900" />
+                                  <Check className="w-2.5 h-2.5 text-slate-900 shrink-0" />
                                 </span>
                               )}
                               {gift.imageUrl ? (
-                                <img src={gift.imageUrl} alt={gift.title} className="w-8 h-8 rounded-lg object-cover mb-1" />
+                                <img
+                                  src={gift.imageUrl}
+                                  alt={gift.title}
+                                  className="w-8 h-8 rounded-lg object-cover mb-1"
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).src = FALLBACK_IMAGE;
+                                  }}
+                                />
                               ) : (
                                 <span className="text-xl mb-1">🎁</span>
                               )}
@@ -250,7 +257,7 @@ export const CartDrawer = () => {
               {cart.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center py-12">
                   <div className="p-4 bg-slate-800/60 rounded-full text-slate-500 mb-4 border border-slate-700">
-                    <ShoppingBag className="w-12 h-12 stroke-[1.5]" />
+                    <ShoppingBag className="w-12 h-12 stroke-[1.5] shrink-0" />
                   </div>
                   <h3 className="text-lg font-bold text-slate-200">Корзина пуста</h3>
                   <p className="text-xs text-slate-400 max-w-xs mt-1">
@@ -272,7 +279,7 @@ export const CartDrawer = () => {
                       <div className="flex items-start justify-between">
                         <h4 className="text-sm font-bold text-slate-100 truncate">{item.title}</h4>
                         <button onClick={() => removeFromCart(item.id)} className="text-slate-500 hover:text-red-400 p-1 transition shrink-0">
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="w-4 h-4 shrink-0" />
                         </button>
                       </div>
                       {item.variant && (
@@ -287,11 +294,11 @@ export const CartDrawer = () => {
                         {item.price > 0 && (
                           <div className="flex items-center space-x-1.5 bg-slate-900 border border-slate-700 p-1 rounded-xl">
                             <button onClick={() => updateQuantity(item.id, -1)} className="w-6 h-6 rounded-lg bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center">
-                              <Minus className="w-3 h-3" />
+                              <Minus className="w-3 h-3 shrink-0" />
                             </button>
                             <span className="text-xs font-black text-white px-1.5">{item.quantity}</span>
                             <button onClick={() => updateQuantity(item.id, 1)} className="w-6 h-6 rounded-lg bg-red-600 hover:bg-red-500 text-white flex items-center justify-center">
-                              <Plus className="w-3 h-3" />
+                              <Plus className="w-3 h-3 shrink-0" />
                             </button>
                           </div>
                         )}
@@ -308,7 +315,7 @@ export const CartDrawer = () => {
                 {appliedPromo ? (
                   <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-between">
                     <div className="flex items-center space-x-2">
-                      <Tag className="w-4 h-4 text-emerald-400" />
+                      <Tag className="w-4 h-4 text-emerald-400 shrink-0" />
                       <div>
                         <span className="text-xs font-bold text-emerald-300">
                           {appliedPromo.code} (-{appliedPromo.discountType === 'percent' ? `${appliedPromo.discountValue}%` : `${appliedPromo.discountValue} ₽`})
@@ -333,12 +340,12 @@ export const CartDrawer = () => {
                         disabled={isApplyingPromo}
                         className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition disabled:opacity-50 flex items-center gap-1.5"
                       >
-                        {isApplyingPromo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Ввод'}
+                        {isApplyingPromo ? <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" /> : 'Ввод'}
                       </button>
                     </div>
                     {promoError && (
                       <p className="text-[11px] text-red-400 flex items-center gap-1">
-                        <AlertCircle className="w-3 h-3" /> {promoError}
+                        <AlertCircle className="w-3 h-3 shrink-0" /> {promoError}
                       </p>
                     )}
                   </form>
@@ -378,7 +385,7 @@ export const CartDrawer = () => {
                   className="w-full py-4 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-600 text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-red-500/25 flex items-center justify-center space-x-2 active:scale-95 transition"
                 >
                   <span>Оформить заказ</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <ArrowRight className="w-4 h-4 shrink-0" />
                 </button>
               </div>
             )}

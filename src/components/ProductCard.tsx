@@ -4,9 +4,8 @@ import React, { useState } from 'react';
 import Image from 'next/image';
 import { Product } from '@/data/products';
 import { useStore } from '@/store/useStore';
+import { FALLBACK_IMAGE } from '@/lib/constants';
 import { Plus, Minus, ShoppingBag } from 'lucide-react';
-
-const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&w=800&q=80';
 
 interface ProductCardProps {
   product: Product;
@@ -173,7 +172,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, priority = fa
               className="flex items-center gap-1 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-600 text-white font-extrabold text-[10px] sm:text-xs px-2 sm:px-3.5 py-2 sm:py-2.5 rounded-xl shadow-md shadow-red-500/20 active:scale-95 transition shrink-0"
             >
               <ShoppingBag className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
-              <span className="hidden xs:inline sm:inline">В корзину</span>
+              <span className="hidden sm:inline">В корзину</span>
             </button>
           )
         ) : (
