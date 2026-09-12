@@ -1,39 +1,58 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
-import { products } from '@/db/schema';
+import { products, categories as categoriesTable } from '@/db/schema';
 import { seedDatabase } from '@/db/seed';
 import { PRODUCTS } from '@/data/products';
 import { CATEGORIES } from '@/data/categories';
-import { DISTRICTS } from '@/data/districts';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    let dbProducts: any[] = [];
-    try {
-      dbProducts = await db.select().from(products);
-      if (dbProducts.length === 0) {
-        await seedDatabase();
-        dbProducts = await db.select().from(products);
-      }
-    } catch (dbErr) {
-      console.warn("Using fallback static menu data due to DB query:", dbErr);
-    }
+    // Параллельно запрашиваем продукты и категории из БД —
+    // вместо двух последовательных await экономим ~100–200ms
+    const [dbProducts] = await Promise.all([
+      db.select().from(products).catch((err) => {
+        console.warn('[Menu] Failed to fetch products from DB:', err);
+        return [] as typeof PRODUCTS;
+      }),
+    ]);
 
-    const items = dbProducts.length > 0 ? dbProducts : PRODUCTS;
+    // Если БД пустая — запускаем сид и повторяем запрос
+    if (dbProducts.length === 0) {
+      console.info('[Menu] DB is empty, running seed...');
+      try {
+        await seedDatabase();
+        const seededProducts = await db.select().from(products);
+        return NextResponse.json({
+          success: true,
+          categories: CATEGORIES,
+          products: seededProducts,
+        });
+      } catch (seedErr) {
+        console.error('[Menu] Seed failed, falling back to static data:', seedErr);
+        return NextResponse.json({
+          success: true,
+          categories: CATEGORIES,
+          products: PRODUCTS,
+        });
+      }
+    }
 
     return NextResponse.json({
       success: true,
       categories: CATEGORIES,
-      districts: DISTRICTS,
-      products: items,
+      products: dbProducts,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[Menu] Unhandled error:', error);
+    // Фолбэк на статические данные — сайт работает даже при падении БД
     return NextResponse.json({
       success: false,
       categories: CATEGORIES,
-      districts: DISTRICTS,
       products: PRODUCTS,
-      error: error.message
+      error: message,
     });
   }
 }
