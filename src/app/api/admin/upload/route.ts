@@ -8,6 +8,12 @@ export const runtime = 'nodejs';
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_SIZE_BYTES = 2 * 1024 * 1024;
 
+const MIME_TO_EXT: Record<string, string> = {
+  'image/webp': 'webp',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+};
+
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
@@ -33,24 +39,25 @@ export async function POST(req: Request) {
       );
     }
 
-    // Чистим ID от любых небезопасных символов (кириллица, пробелы, слэши и т.д.)
     const safeProductId = String(productId).replace(/[^a-zA-Z0-9_-]/g, '') || 'item';
     const uniquePart = randomUUID().slice(0, 8);
+    // Расширение и Content-Type определяются по РЕАЛЬНОМУ типу присланного файла,
+    // так как клиент может прислать WebP или JPEG-фолбэк (см. ImageUploader.tsx)
+    const ext = MIME_TO_EXT[file.type] || 'webp';
 
-    // Гарантированно без ведущего/двойного слэша — плоская структура внутри бакета
-    const fileName = `dish_${safeProductId}_${Date.now()}_${uniquePart}.webp`
+    const fileName = `dish_${safeProductId}_${Date.now()}_${uniquePart}.${ext}`
       .replace(/^\/+/, '')
       .replace(/\/{2,}/g, '/');
 
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    console.log('[upload] bucket=%s path=%s size=%d', DISHES_BUCKET, fileName, buffer.length);
+    console.log('[upload] bucket=%s path=%s size=%d contentType=%s', DISHES_BUCKET, fileName, buffer.length, file.type);
 
     const { error: uploadError } = await supabaseAdmin.storage
       .from(DISHES_BUCKET)
       .upload(fileName, buffer, {
-        contentType: 'image/webp',
+        contentType: file.type,
         upsert: false,
       });
 

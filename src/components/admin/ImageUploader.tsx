@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useCallback } from 'react';
 import imageCompression from 'browser-image-compression';
-import { Upload, Loader2, CheckCircle2, RefreshCw, Trash2, AlertCircle, X } from 'lucide-react';
+import { Upload, Loader2, CheckCircle2, RefreshCw, Trash2, AlertCircle, AlertTriangle, X } from 'lucide-react';
 
 interface ImageUploaderProps {
   value: string | null | undefined;
@@ -16,8 +16,88 @@ const MAX_ORIGINAL_SIZE_MB = 15;
 type UploaderStatus = 'idle' | 'compressing' | 'uploading' | 'error';
 
 interface ToastState {
-  type: 'error' | 'success';
+  type: 'error' | 'success' | 'warning';
   message: string;
+}
+
+/**
+ * Эвристика детекции известного бага Android-браузеров:
+ * OffscreenCanvas + Web Worker кодирование в WebP иногда возвращает
+ * полностью (или почти полностью) чёрное изображение, если исходное фото
+ * не успело декодироваться в контексте воркера. Функция быстро проверяет
+ * усреднённую яркость и разброс пикселей на уменьшенной 16x16 копии —
+ * если картинка практически монотонно тёмная, это подозрительный признак
+ * брака кодирования, а не реальное содержимое фото.
+ */
+function isLikelyCorruptedBlackImage(blob: Blob): Promise<boolean> {
+  return new Promise((resolve) => {
+    const objectUrl = URL.createObjectURL(blob);
+    const img = new window.Image();
+
+    img.onload = () => {
+      try {
+        const SAMPLE_SIZE = 16;
+        const canvas = document.createElement('canvas');
+        canvas.width = SAMPLE_SIZE;
+        canvas.height = SAMPLE_SIZE;
+        const ctx = canvas.getContext('2d');
+
+        if (!ctx) {
+          resolve(false);
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, SAMPLE_SIZE, SAMPLE_SIZE);
+        const { data } = ctx.getImageData(0, 0, SAMPLE_SIZE, SAMPLE_SIZE);
+
+        let totalBrightness = 0;
+        const pixelCount = SAMPLE_SIZE * SAMPLE_SIZE;
+
+        for (let i = 0; i < data.length; i += 4) {
+          totalBrightness += (data[i] + data[i + 1] + data[i + 2]) / 3;
+        }
+        const avgBrightness = totalBrightness / pixelCount;
+
+        let maxDeviation = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3;
+          maxDeviation = Math.max(maxDeviation, Math.abs(brightness - avgBrightness));
+        }
+
+        // Практически нулевая яркость + практически нулевой разброс —
+        // явный признак брака кодирования, а не реального тёмного фото
+        // (у реальных тёмных фото всегда есть блики/текстура/разброс пикселей)
+        const suspicious = avgBrightness < 10 && maxDeviation < 5;
+        resolve(suspicious);
+      } catch {
+        resolve(false);
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(false);
+    };
+
+    img.src = objectUrl;
+  });
+}
+
+async function compressToFormat(
+  file: File,
+  fileType: 'image/webp' | 'image/jpeg'
+): Promise<File> {
+  return imageCompression(file, {
+    maxWidthOrHeight: 800,
+    maxSizeMB: 0.12,
+    // Принудительно main-thread кодирование — устраняет известный баг
+    // OffscreenCanvas на части Android-браузеров, возвращающий чёрный кадр
+    useWebWorker: false,
+    fileType,
+    initialQuality: 0.82,
+  });
 }
 
 export const ImageUploader: React.FC<ImageUploaderProps> = ({ value, productId, onChange }) => {
@@ -28,7 +108,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ value, productId, 
 
   const showToast = useCallback((type: ToastState['type'], message: string) => {
     setToast({ type, message });
-    setTimeout(() => setToast(null), 4000);
+    setTimeout(() => setToast(null), 5000);
   }, []);
 
   const processAndUpload = useCallback(
@@ -46,18 +126,39 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ value, productId, 
       setStatus('compressing');
 
       try {
-        const compressedFile = await imageCompression(file, {
-          maxWidthOrHeight: 800,
-          maxSizeMB: 0.12,
-          useWebWorker: true,
-          fileType: 'image/webp',
-          initialQuality: 0.82,
-        });
+        // Первая попытка — сжимаем в WebP (лучшее сжатие)
+        let finalFile = await compressToFormat(file, 'image/webp');
+        let wasFixed = false;
+
+        const isBroken = await isLikelyCorruptedBlackImage(finalFile);
+
+        if (isBroken) {
+          console.warn(
+            '[ImageUploader] Обнаружен подозрительно чёрный результат WebP-кодирования. ' +
+            'Повторное сжатие в JPEG как более совместимый формат...'
+          );
+          // Вторая попытка — JPEG декодируется/кодируется стабильнее на всех устройствах
+          const jpegAttempt = await compressToFormat(file, 'image/jpeg');
+          const stillBroken = await isLikelyCorruptedBlackImage(jpegAttempt);
+
+          if (!stillBroken) {
+            finalFile = jpegAttempt;
+            wasFixed = true;
+          } else {
+            // Оба варианта подозрительны — либо баг устройства совсем специфичный,
+            // либо фото реально очень тёмное. Не блокируем менеджера, но предупреждаем.
+            showToast(
+              'warning',
+              'Фото выглядит очень тёмным. Проверьте превью после загрузки — возможно, стоит выбрать другое фото.'
+            );
+            finalFile = jpegAttempt;
+          }
+        }
 
         setStatus('uploading');
 
         const formData = new FormData();
-        formData.append('file', compressedFile, 'compressed.webp');
+        formData.append('file', finalFile, finalFile.name || 'compressed');
         formData.append('productId', productId);
         if (value) formData.append('oldImageUrl', value);
 
@@ -71,7 +172,12 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ value, productId, 
         if (data.success) {
           onChange(data.url);
           setStatus('idle');
-          showToast('success', 'Фото успешно загружено!');
+          showToast(
+            'success',
+            wasFixed
+              ? 'Фото загружено! (автоматически исправлен брак кодирования)'
+              : 'Фото успешно загружено!'
+          );
         } else {
           setStatus('error');
           showToast('error', data.error || 'Ошибка загрузки фото');
@@ -127,11 +233,15 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ value, productId, 
           className={`absolute -top-2 left-0 right-0 -translate-y-full z-20 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold shadow-lg animate-in fade-in slide-in-from-bottom-1 ${
             toast.type === 'error'
               ? 'bg-red-500/20 border border-red-500/40 text-red-300'
+              : toast.type === 'warning'
+              ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300'
               : 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
           }`}
         >
           {toast.type === 'error' ? (
             <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+          ) : toast.type === 'warning' ? (
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
           ) : (
             <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
           )}
@@ -140,7 +250,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ value, productId, 
             onClick={() => setToast(null)}
             className="shrink-0 opacity-70 hover:opacity-100"
           >
-            <X className="w-3 h-3" />
+            <X className="w-3 h-3 shrink-0" />
           </button>
         </div>
       )}
@@ -173,7 +283,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ value, productId, 
         >
           {isBusy ? (
             <>
-              <Loader2 className="w-7 h-7 text-red-400 animate-spin" />
+              <Loader2 className="w-7 h-7 text-red-400 animate-spin shrink-0" />
               <span className="text-[11px] font-bold text-slate-300 text-center px-2">
                 {status === 'compressing' ? 'Оптимизация...' : 'Загрузка...'}
               </span>
@@ -181,7 +291,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ value, productId, 
           ) : (
             <>
               <div className="p-2.5 bg-slate-900/80 rounded-xl text-slate-400">
-                <Upload className="w-5 h-5" />
+                <Upload className="w-5 h-5 shrink-0" />
               </div>
               <span className="text-[11px] font-bold text-slate-300 text-center px-3">
                 📁 Загрузить фотографию
@@ -201,7 +311,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ value, productId, 
             />
             {isBusy && (
               <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center">
-                <Loader2 className="w-6 h-6 text-white animate-spin" />
+                <Loader2 className="w-6 h-6 text-white animate-spin shrink-0" />
               </div>
             )}
             {!isBusy && (
@@ -209,7 +319,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ value, productId, 
             )}
             {!isBusy && (
               <span className="absolute bottom-1.5 left-1.5 flex items-center gap-1 bg-emerald-500/90 text-white text-[9px] font-black px-1.5 py-0.5 rounded-md backdrop-blur">
-                <CheckCircle2 className="w-2.5 h-2.5" /> Фото загружено
+                <CheckCircle2 className="w-2.5 h-2.5 shrink-0" /> Фото загружено
               </span>
             )}
           </div>
@@ -221,7 +331,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ value, productId, 
               onClick={() => fileInputRef.current?.click()}
               className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-lg text-[10px] font-bold transition disabled:opacity-50"
             >
-              <RefreshCw className="w-3 h-3" /> Заменить
+              <RefreshCw className="w-3 h-3 shrink-0" /> Заменить
             </button>
             <button
               type="button"
@@ -229,7 +339,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ value, productId, 
               onClick={handleDelete}
               className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 rounded-lg text-[10px] font-bold transition disabled:opacity-50"
             >
-              <Trash2 className="w-3 h-3" /> Удалить
+              <Trash2 className="w-3 h-3 shrink-0" /> Удалить
             </button>
           </div>
         </div>
