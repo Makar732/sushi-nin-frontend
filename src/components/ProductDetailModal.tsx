@@ -52,14 +52,18 @@ export const ProductDetailModal = () => {
           </button>
 
           {/* Image Column */}
-          <div className="gpu-fix relative w-full md:w-1/2 h-64 md:h-auto bg-slate-950 overflow-hidden shrink-0">
+          <div
+            onContextMenu={(e) => e.preventDefault()}
+            className="gpu-fix no-callout relative w-full md:w-1/2 h-64 md:h-auto bg-slate-950 overflow-hidden shrink-0"
+          >
             <Image
               src={imgSrc}
               alt={product.title}
               fill
+              draggable={false}
               sizes="(max-width: 768px) 100vw, 50vw"
               priority
-              className="object-cover object-center"
+              className="no-callout object-cover object-center"
               onError={() => setImgSrc(FALLBACK_IMAGE)}
             />
             <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent md:bg-gradient-to-r" />

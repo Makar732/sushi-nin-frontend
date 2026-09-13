@@ -1,10 +1,6 @@
 @import "tailwindcss";
 
 @layer base {
-  /* Критический фикс: WebKit/iOS Safari вычисляет flex-shrink для inline SVG
-     иначе, чем Chromium. Без явного flex-shrink: 0 иконки внутри flex-контейнеров
-     (кнопки, навигация, горизонтальный скролл) могут схлопнуться до 0×0px
-     и полностью исчезнуть на мобильных, оставаясь видимыми на десктопном Chrome. */
   svg {
     flex-shrink: 0;
   }
@@ -15,10 +11,9 @@
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
-  /* Hide scrollbar for IE, Edge and Firefox */
   .no-scrollbar {
-    -ms-overflow-style: none;  /* IE and Edge */
-    scrollbar-width: none;  /* Firefox */
+    -ms-overflow-style: none;
+    scrollbar-width: none;
   }
 
   /* Custom styled scrollbars */
@@ -38,17 +33,29 @@
     background: rgba(239, 68, 68, 0.8);
   }
 
-  /* Форсирует создание отдельного GPU-слоя для элементов с rounded corners +
-     overflow-hidden + CSS transform (используется для картинок товаров).
-     Профилактика от известного бага компоновки в WebKit/iOS Safari,
-     при котором такие элементы рендерятся сплошным чёрным цветом
-     до принудительного перерисовывания. См. Пункт 2 чек-листа. */
   .gpu-fix {
     -webkit-transform: translateZ(0);
     transform: translateZ(0);
     -webkit-backface-visibility: hidden;
     backface-visibility: hidden;
     isolation: isolate;
+  }
+
+  /* Критический фикс: блокирует нативное поведение мобильных браузеров
+     (Chrome/Yandex на Android) — долгое нажатие на <img> вызывает системный
+     оверлей "Открыть изображение" / "Найти это фото" (Google Lens / Yandex).
+     Пользователь ощущает это как "вместо карточки товара вылезает какое-то
+     второе фото", а затем при попытке браузера загрузить результат поиска
+     по картинке — падает системная страница ошибки "This page couldn't load".
+     Это не баг нашего кода, а нативный жест ОС/браузера, требующий явного
+     отключения через CSS. */
+  .no-callout {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
 }
 

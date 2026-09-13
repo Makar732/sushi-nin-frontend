@@ -45,21 +45,23 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, priority = fa
   return (
     <div
       onClick={() => setSelectedProductForModal(product)}
-      className="group relative flex flex-col justify-between bg-slate-800/80 hover:bg-slate-800 border border-slate-700/50 hover:border-red-500/40 rounded-2xl p-2 sm:p-4 transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-red-500/10 cursor-pointer overflow-hidden"
+      onContextMenu={(e) => e.preventDefault()}
+      className="no-callout group relative flex flex-col justify-between bg-slate-800/80 hover:bg-slate-800 border border-slate-700/50 hover:border-red-500/40 rounded-2xl p-2 sm:p-4 transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-red-500/10 cursor-pointer overflow-hidden"
     >
       <div className="absolute top-0 right-0 w-20 h-20 bg-red-500/5 rounded-full blur-2xl group-hover:bg-red-500/15 transition-all duration-500" />
 
       <div>
         {/* Image */}
-        <div className="gpu-fix relative w-full h-28 sm:h-44 md:h-48 rounded-xl overflow-hidden bg-slate-900 mb-2 sm:mb-3">
+        <div className="gpu-fix no-callout relative w-full h-28 sm:h-44 md:h-48 rounded-xl overflow-hidden bg-slate-900 mb-2 sm:mb-3">
           <Image
             src={imgSrc}
             alt={product.title}
             fill
+            draggable={false}
             sizes="(max-width: 640px) 50vw, (max-width: 768px) 50vw, (max-width: 1280px) 33vw, 25vw"
             priority={priority}
             loading={priority ? undefined : 'lazy'}
-            className="object-cover object-center group-hover:scale-105 transition-transform duration-500"
+            className="no-callout object-cover object-center group-hover:scale-105 transition-transform duration-500"
             onError={() => setImgSrc(FALLBACK_IMAGE)}
           />
 
