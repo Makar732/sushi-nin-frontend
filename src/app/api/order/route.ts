@@ -6,11 +6,6 @@ import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Zod-схема входящего запроса.
-// Клиент передаёт ТОЛЬКО id, quantity и вариант (размер пиццы).
-// НИКАКИХ цен от клиента — всё считаем на сервере по данным из БД.
-// ─────────────────────────────────────────────────────────────────────────────
 const OrderItemSchema = z.object({
   id: z
     .string()
@@ -47,7 +42,6 @@ const OrderSchema = z.object({
       .optional()
       .transform((v) => v?.trim().replace(/[<>"'&]/g, '') ?? ''),
   }),
-  // ← Только id+quantity+variant. Цену НЕ принимаем от клиента.
   items: z
     .array(OrderItemSchema)
     .min(1, 'Корзина пуста')
@@ -58,12 +52,8 @@ const OrderSchema = z.object({
   address: z.string().min(1).max(300).transform((v) => v.trim()),
   time: z.string().min(1).max(100).transform((v) => v.trim()),
   promoCode: z.string().max(50).nullable().optional(),
-  // deliveryFee от клиента игнорируем — пересчитываем на сервере
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Telegram fire & forget
-// ─────────────────────────────────────────────────────────────────────────────
 function sendTelegramNotification(
   token: string,
   chatId: string,
@@ -90,10 +80,6 @@ function sendTelegramNotification(
     });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Функция пересчёта стоимости доставки на сервере.
-// Пороги зашиты здесь же — синхронизируй с delivery_zones если используешь БД.
-// ─────────────────────────────────────────────────────────────────────────────
 function calcDeliveryFee(
   deliveryType: string,
   zone: string,
@@ -101,13 +87,11 @@ function calcDeliveryFee(
 ): number {
   if (deliveryType === 'pickup') return 0;
 
-  // Базовые пороги по зонам — можно вынести в отдельную таблицу позже.
-  // Главное: расчёт на СЕРВЕРЕ, клиент не влияет.
   const zoneConfig: Record<string, { freeThreshold: number; fee: number }> = {
-    'Заволжье': { freeThreshold: 700, fee: 100 },
-    'Городец': { freeThreshold: 1500, fee: 250 },
-    'Балахна': { freeThreshold: 1500, fee: 300 },
-    'Чкаловск': { freeThreshold: 1500, fee: 350 },
+    'Заволжье':  { freeThreshold: 700,  fee: 100 },
+    'Городец':   { freeThreshold: 1500, fee: 250 },
+    'Балахна':   { freeThreshold: 1500, fee: 300 },
+    'Чкаловск':  { freeThreshold: 1500, fee: 350 },
   };
 
   const config = zoneConfig[zone] ?? { freeThreshold: 700, fee: 100 };
@@ -129,57 +113,65 @@ export async function POST(req: Request) {
 
     const parseResult = OrderSchema.safeParse(rawBody);
     if (!parseResult.success) {
-      const firstError = parseResult.error.errors[0];
+      // ✅ ФИКС: Zod v3 хранит ошибки в .issues, не в .errors
+      // parseResult.error — это ZodError, у которого есть .issues[]
+      // и .flatten() для удобного форматирования
+      const firstIssue = parseResult.error.issues[0];
+      const errorPath = firstIssue?.path?.join('.') ?? 'unknown';
+      const errorMsg  = firstIssue?.message ?? 'Ошибка валидации';
       return NextResponse.json(
         {
           success: false,
-          error: `Ошибка валидации: ${firstError.path.join('.')} — ${firstError.message}`,
+          error: `Ошибка валидации: ${errorPath} — ${errorMsg}`,
         },
         { status: 400 }
       );
     }
 
     const body = parseResult.data;
-    const { orderId, customer, items, zone, paymentMethod, deliveryType, address, time, promoCode } = body;
+    const {
+      orderId,
+      customer,
+      items,
+      zone,
+      paymentMethod,
+      deliveryType,
+      address,
+      time,
+      promoCode,
+    } = body;
 
     // ── Шаг 1: Серверный пересчёт цен ────────────────────────────────────────
-    // Извлекаем productId из cartItemId (формат: "pepperoni-pizza" или "pepperoni-pizza-34 см")
-    // Подарочные товары (gift-*) имеют price = 0 и не проверяются в products.
-    const giftItems = items.filter((i) => i.id.startsWith('gift-'));
+    const giftItems   = items.filter((i) => i.id.startsWith('gift-'));
     const regularItems = items.filter((i) => !i.id.startsWith('gift-'));
 
-    // productId хранится в id без суффикса варианта.
-    // CartItem.id = `${product.id}${variant ? `-${variant}` : ''}`
-    // Для 34см/40см пиццы: "pepperoni-pizza-34 см" → productId = "pepperoni-pizza"
     const productIds = [
       ...new Set(
-        regularItems.map((item) => {
-          // Суффиксы вариантов: " -34 см", " -40 см"
-          return item.id
-            .replace(/-34 см$/, '')
-            .replace(/-40 см$/, '');
-        })
+        regularItems.map((item) =>
+          item.id.replace(/-34 см$/, '').replace(/-40 см$/, '')
+        )
       ),
     ];
 
-    // Запрашиваем актуальные данные из БД одним запросом
-    const dbProducts = await db
-      .select({
-        id: products.id,
-        price: products.price,
-        price40cm: products.price40cm,
-        inStock: products.inStock,
-        title: products.title,
-        hasVariants: products.hasVariants,
-      })
-      .from(products)
-      .where(inArray(products.id, productIds));
+    const dbProducts = productIds.length > 0
+      ? await db
+          .select({
+            id:          products.id,
+            price:       products.price,
+            price40cm:   products.price40cm,
+            inStock:     products.inStock,
+            title:       products.title,
+            hasVariants: products.hasVariants,
+          })
+          .from(products)
+          .where(inArray(products.id, productIds))
+      : [];
 
-    // Строим lookup-карту для O(1) доступа
     const productMap = new Map(dbProducts.map((p) => [p.id, p]));
 
-    // ── Шаг 2: Проверка доступности товаров + серверный расчёт subtotal ──────
+    // ── Шаг 2: Проверка доступности + серверный расчёт subtotal ──────────────
     let subtotal = 0;
+
     const enrichedItems: Array<{
       id: string;
       productId: string;
@@ -196,7 +188,6 @@ export async function POST(req: Request) {
 
       const dbProduct = productMap.get(productId);
 
-      // Товар не найден в БД — отклоняем заказ
       if (!dbProduct) {
         return NextResponse.json(
           {
@@ -207,7 +198,6 @@ export async function POST(req: Request) {
         );
       }
 
-      // Товар не в наличии — отклоняем заказ
       if (!dbProduct.inStock) {
         return NextResponse.json(
           {
@@ -218,7 +208,6 @@ export async function POST(req: Request) {
         );
       }
 
-      // Определяем актуальную цену: для пиццы 40см — price40cm
       const is40cm = item.id.endsWith('-40 см');
       const unitPrice =
         is40cm && dbProduct.price40cm != null
@@ -228,24 +217,24 @@ export async function POST(req: Request) {
       subtotal += unitPrice * item.quantity;
 
       enrichedItems.push({
-        id: item.id,
+        id:        item.id,
         productId: dbProduct.id,
-        title: dbProduct.title,
-        variant: item.variant,
-        price: unitPrice,
-        quantity: item.quantity,
+        title:     dbProduct.title,
+        variant:   item.variant,
+        price:     unitPrice,
+        quantity:  item.quantity,
       });
     }
 
-    // Добавляем подарочные позиции (цена = 0, не проверяем в products)
+    // Подарочные позиции (price = 0)
     for (const giftItem of giftItems) {
       enrichedItems.push({
-        id: giftItem.id,
+        id:        giftItem.id,
         productId: giftItem.id,
-        title: giftItem.id,
-        variant: undefined,
-        price: 0,
-        quantity: giftItem.quantity,
+        title:     giftItem.id,
+        variant:   undefined,
+        price:     0,
+        quantity:  giftItem.quantity,
       });
     }
 
@@ -253,8 +242,8 @@ export async function POST(req: Request) {
     const deliveryFeeNum = calcDeliveryFee(deliveryType, zone, subtotal);
 
     // ── Шаг 4: Серверная валидация промокода ──────────────────────────────────
-    let discountNum = 0;
-    let validPromoId: string | null = null;
+    let discountNum   = 0;
+    let validPromoId: string | null   = null;
     let validPromoCode: string | null = null;
 
     if (promoCode) {
@@ -276,7 +265,7 @@ export async function POST(req: Request) {
             promo.discountType === 'fixed'
               ? Math.min(promo.discountValue, subtotal)
               : Math.round((subtotal * promo.discountValue) / 100);
-          validPromoId = promo.id;
+          validPromoId   = promo.id;
           validPromoCode = promo.code;
         }
       } catch (promoErr) {
@@ -288,16 +277,16 @@ export async function POST(req: Request) {
     const finalPay = subtotal + deliveryFeeNum - discountNum;
 
     const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-    const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+    const TELEGRAM_CHAT_ID   = process.env.TELEGRAM_CHAT_ID;
 
     // ── Шаг 6: INSERT заказа + UPDATE промокода параллельно ───────────────────
     const itemsForDb = enrichedItems.map((i) => ({
-      id: i.id,
+      id:        i.id,
       productId: i.productId,
-      title: i.title,
-      variant: i.variant,
-      price: i.price,
-      quantity: i.quantity,
+      title:     i.title,
+      variant:   i.variant,
+      price:     i.price,
+      quantity:  i.quantity,
     }));
     const itemsJson = JSON.stringify(itemsForDb);
 
@@ -384,14 +373,12 @@ ${itemsList}
     }
 
     // ── Шаг 8: Ответ клиенту с серверными суммами ────────────────────────────
-    // Возвращаем finalPay, subtotal, deliveryFee от сервера —
-    // клиент должен использовать именно эти значения для отображения.
     return NextResponse.json({
-      success: true,
+      success:     true,
       orderId,
       subtotal,
       deliveryFee: deliveryFeeNum,
-      discount: discountNum,
+      discount:    discountNum,
       totalAmount: finalPay,
     });
   } catch (error: unknown) {
