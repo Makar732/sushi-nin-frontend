@@ -9,43 +9,76 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 export const ProductDetailModal = () => {
   const { selectedProductForModal, setSelectedProductForModal, addToCart, cart, updateQuantity } = useStore();
+
+  // ⚠️ ВСЕ ХУКИ ДОЛЖНЫ БЫТЬ ВЫЗВАНЫ ДО ЛЮБОГО УСЛОВНОГО RETURN.
+  // Это критически важно для React — иначе "Rendered more hooks than during the previous render"
+  // и полный краш страницы при открытии модалки.
   const [selectedVariant, setSelectedVariant] = useState<'34 см' | '40 см'>('34 см');
   const [showAiPrompt, setShowAiPrompt] = useState(false);
 
-  if (!selectedProductForModal) return null;
-
   const product = selectedProductForModal;
-  const isPizza = product.category === 'Пицца';
-  const currentPrice = isPizza && selectedVariant === '40 см'
-    ? (product.price40cm || Math.round(product.price * 1.35))
-    : product.price;
+
+  // Безопасно вычисляем fallback-картинку ДО early return, чтобы порядок хуков был стабилен.
+  const safeImageSrc = product
+    ? product.imageUrl || (product.image_filename ? `/images/${product.image_filename}` : FALLBACK_IMAGE)
+    : FALLBACK_IMAGE;
+
+  const [imgSrc, setImgSrc] = useState<string>(safeImageSrc);
+
+  // Синхронизируем imgSrc при смене товара (т.к. useState берёт значение только при первом монтировании)
+  React.useEffect(() => {
+    setImgSrc(safeImageSrc);
+    setSelectedVariant('34 см');
+    setShowAiPrompt(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product?.id]);
+
+  // Теперь можно безопасно делать ранний return — все хуки уже вызваны выше.
+  if (!product) return null;
+
+  // --- Защитные проверки полей товара ---
+  const title = product.title?.trim() || 'Без названия';
+  const description = product.description?.trim() || 'Описание отсутствует';
+  const category = product.category || 'Разное';
+  const weight = product.weight || '—';
+  const basePrice = typeof product.price === 'number' && !isNaN(product.price) ? product.price : 0;
+  const price40cm = typeof product.price40cm === 'number' && !isNaN(product.price40cm)
+    ? product.price40cm
+    : Math.round(basePrice * 1.35);
+  const tags = Array.isArray(product.tags) ? product.tags : [];
+  const isPizza = category === 'Пицца';
+  const inStock = product.in_stock !== false; // если undefined — считаем товар доступным
+
+  const currentPrice = isPizza && selectedVariant === '40 см' ? price40cm : basePrice;
 
   const variantKey = isPizza ? selectedVariant : undefined;
   const cartItemId = `${product.id}${variantKey ? `-${variantKey}` : ''}`;
-  const cartItem = cart.find((i) => i.id === cartItemId);
+  const cartItem = (cart || []).find((i) => i.id === cartItemId);
   const currentQuantity = cartItem?.quantity || 0;
-
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const [imgSrc, setImgSrc] = useState(
-    product.imageUrl || `/images/${product.image_filename}` || FALLBACK_IMAGE
-  );
 
   const handleAddToCart = () => {
     addToCart(product, variantKey, currentPrice);
   };
 
+  const handleClose = () => setSelectedProductForModal(null);
+
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md"
+        onClick={handleClose}
+      >
         <motion.div
           initial={{ opacity: 0, scale: 0.9, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.9, y: 20 }}
+          onClick={(e) => e.stopPropagation()}
           className="relative w-full max-w-2xl overflow-hidden bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl shadow-red-500/10 max-h-[90vh] flex flex-col md:flex-row"
         >
           {/* Close button */}
           <button
-            onClick={() => setSelectedProductForModal(null)}
+            onClick={handleClose}
+            aria-label="Закрыть"
             className="absolute top-4 right-4 z-20 p-2 bg-slate-900/80 backdrop-blur border border-slate-700 text-slate-400 rounded-full hover:text-white transition"
           >
             <X className="w-5 h-5 shrink-0" />
@@ -57,8 +90,8 @@ export const ProductDetailModal = () => {
             className="gpu-fix no-callout relative w-full md:w-1/2 h-64 md:h-auto bg-slate-950 overflow-hidden shrink-0"
           >
             <Image
-              src={imgSrc}
-              alt={product.title}
+              src={imgSrc || FALLBACK_IMAGE}
+              alt={title}
               fill
               draggable={false}
               sizes="(max-width: 768px) 100vw, 50vw"
@@ -68,7 +101,7 @@ export const ProductDetailModal = () => {
             />
             <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent md:bg-gradient-to-r" />
 
-            {!product.in_stock && (
+            {!inStock && (
               <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-10">
                 <span className="bg-red-600 text-white px-4 py-2 rounded-2xl font-bold text-sm uppercase tracking-wider">
                   Нет в наличии
@@ -78,10 +111,10 @@ export const ProductDetailModal = () => {
 
             <div className="absolute top-4 left-4 flex flex-wrap gap-1.5 z-10">
               <span className="bg-slate-900/90 text-slate-200 border border-slate-700 text-[11px] font-bold px-2.5 py-1 rounded-xl backdrop-blur">
-                {product.category}
+                {category}
               </span>
               <span className="bg-slate-900/90 text-sky-400 border border-sky-500/30 text-[11px] font-bold px-2.5 py-1 rounded-xl backdrop-blur">
-                {product.weight}
+                {weight}
               </span>
             </div>
           </div>
@@ -96,11 +129,11 @@ export const ProductDetailModal = () => {
               </div>
 
               <h2 className="text-2xl font-black text-slate-100 tracking-tight leading-tight">
-                {product.title}
+                {title}
               </h2>
 
               <p className="text-sm text-slate-300 mt-3 leading-relaxed">
-                {product.description}
+                {description}
               </p>
 
               {isPizza && (
@@ -117,7 +150,7 @@ export const ProductDetailModal = () => {
                           : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
                       }`}
                     >
-                      34 см ({product.price} ₽)
+                      34 см ({basePrice} ₽)
                     </button>
                     <button
                       onClick={() => setSelectedVariant('40 см')}
@@ -127,7 +160,7 @@ export const ProductDetailModal = () => {
                           : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
                       }`}
                     >
-                      40 см ({product.price40cm || Math.round(product.price * 1.35)} ₽)
+                      40 см ({price40cm} ₽)
                     </button>
                   </div>
                 </div>
@@ -137,7 +170,7 @@ export const ProductDetailModal = () => {
               {product.ai_image_prompt && (
                 <div className="mt-5">
                   <button
-                    onClick={() => setShowAiPrompt(!showAiPrompt)}
+                    onClick={() => setShowAiPrompt((prev) => !prev)}
                     className="flex items-center space-x-1.5 text-xs text-sky-400 hover:text-sky-300 font-semibold transition"
                   >
                     <Sparkles className="w-3.5 h-3.5 shrink-0" />
@@ -166,7 +199,7 @@ export const ProductDetailModal = () => {
                 <span className="text-2xl font-black text-slate-50">{currentPrice} ₽</span>
               </div>
 
-              {product.in_stock ? (
+              {inStock ? (
                 currentQuantity > 0 ? (
                   <div className="flex items-center space-x-3 bg-slate-800 border border-slate-700 p-1.5 rounded-2xl">
                     <button

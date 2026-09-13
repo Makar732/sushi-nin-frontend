@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { Product } from '@/data/products';
 import { useStore } from '@/store/useStore';
@@ -12,19 +12,44 @@ interface ProductCardProps {
   priority?: boolean;
 }
 
+const getSafeImageSrc = (product: Product): string => {
+  if (product?.imageUrl) return product.imageUrl;
+  if (product?.image_filename) return `/images/${product.image_filename}`;
+  return FALLBACK_IMAGE;
+};
+
 export const ProductCard: React.FC<ProductCardProps> = ({ product, priority = false }) => {
   const { addToCart, cart, updateQuantity, setSelectedProductForModal } = useStore();
   const [selectedVariant, setSelectedVariant] = useState<'34 см' | '40 см'>('34 см');
-  const [imgSrc, setImgSrc] = useState(product.imageUrl || `/images/${product.image_filename}` || FALLBACK_IMAGE);
+  const [imgSrc, setImgSrc] = useState<string>(() => getSafeImageSrc(product));
 
-  const isPizza = product.category === 'Пицца';
-  const currentPrice = isPizza && selectedVariant === '40 см'
-    ? (product.price40cm || Math.round(product.price * 1.35))
-    : product.price;
+  // Если карточка переиспользуется React'ом для другого товара (смена фильтра/категории) —
+  // обновляем картинку, иначе может "залипнуть" картинка от предыдущего продукта.
+  useEffect(() => {
+    setImgSrc(getSafeImageSrc(product));
+  }, [product?.id, product?.imageUrl, product?.image_filename]);
+
+  if (!product) return null;
+
+  // --- Защитные значения ---
+  const title = product.title?.trim() || 'Без названия';
+  const description = product.description?.trim() || '';
+  const category = product.category || 'Разное';
+  const weight = product.weight || '—';
+  const tags = Array.isArray(product.tags) ? product.tags : [];
+  const inStock = product.in_stock !== false;
+  const basePrice = typeof product.price === 'number' && !isNaN(product.price) ? product.price : 0;
+
+  const isPizza = category === 'Пицца';
+  const price40cm = typeof product.price40cm === 'number' && !isNaN(product.price40cm)
+    ? product.price40cm
+    : Math.round(basePrice * 1.35);
+
+  const currentPrice = isPizza && selectedVariant === '40 см' ? price40cm : basePrice;
 
   const variantKey = isPizza ? selectedVariant : undefined;
   const cartItemId = `${product.id}${variantKey ? `-${variantKey}` : ''}`;
-  const cartItem = cart.find((i) => i.id === cartItemId);
+  const cartItem = (cart || []).find((i) => i.id === cartItemId);
   const currentQuantity = cartItem?.quantity || 0;
 
   const handleAddToCart = (e: React.MouseEvent) => {
@@ -42,9 +67,17 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, priority = fa
     updateQuantity(cartItemId, 1);
   };
 
+  const handleOpenModal = () => {
+    try {
+      setSelectedProductForModal(product);
+    } catch (err) {
+      console.error('[ProductCard] Failed to open product modal:', err);
+    }
+  };
+
   return (
     <div
-      onClick={() => setSelectedProductForModal(product)}
+      onClick={handleOpenModal}
       onContextMenu={(e) => e.preventDefault()}
       className="no-callout group relative flex flex-col justify-between bg-slate-800/80 hover:bg-slate-800 border border-slate-700/50 hover:border-red-500/40 rounded-2xl p-2 sm:p-4 transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-red-500/10 cursor-pointer overflow-hidden"
     >
@@ -54,8 +87,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, priority = fa
         {/* Image */}
         <div className="gpu-fix no-callout relative w-full h-28 sm:h-44 md:h-48 rounded-xl overflow-hidden bg-slate-900 mb-2 sm:mb-3">
           <Image
-            src={imgSrc}
-            alt={product.title}
+            src={imgSrc || FALLBACK_IMAGE}
+            alt={title}
             fill
             draggable={false}
             sizes="(max-width: 640px) 50vw, (max-width: 768px) 50vw, (max-width: 1280px) 33vw, 25vw"
@@ -65,7 +98,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, priority = fa
             onError={() => setImgSrc(FALLBACK_IMAGE)}
           />
 
-          {!product.in_stock && (
+          {!inStock && (
             <div className="absolute inset-0 bg-slate-950/80 flex items-center justify-center z-10">
               <span className="bg-red-950/90 text-red-400 border border-red-500/50 px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase">
                 Нет в наличии
@@ -75,22 +108,22 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, priority = fa
 
           {/* Badges */}
           <div className="absolute top-1.5 left-1.5 flex flex-col gap-1 z-10">
-            {product.tags?.includes('hit') && (
+            {tags.includes('hit') && (
               <span className="bg-red-600/90 text-white text-[9px] sm:text-[10px] font-black px-1.5 py-0.5 rounded-md border border-red-400/50 backdrop-blur">
                 💥 ХИТ
               </span>
             )}
-            {product.tags?.includes('spicy') && (
+            {tags.includes('spicy') && (
               <span className="bg-amber-600/90 text-white text-[9px] sm:text-[10px] font-black px-1.5 py-0.5 rounded-md border border-amber-400/50 backdrop-blur">
                 🌶️ ОСТРОЕ
               </span>
             )}
-            {product.tags?.includes('baked') && (
+            {tags.includes('baked') && (
               <span className="bg-orange-600/90 text-white text-[9px] sm:text-[10px] font-black px-1.5 py-0.5 rounded-md border border-orange-400/50 backdrop-blur">
                 🧀 ЗАПЕЧ.
               </span>
             )}
-            {product.tags?.includes('nomeat') && (
+            {tags.includes('nomeat') && (
               <span className="bg-emerald-600/90 text-white text-[9px] sm:text-[10px] font-black px-1.5 py-0.5 rounded-md border border-emerald-400/50 backdrop-blur">
                 🥑 БЕЗ МЯСА
               </span>
@@ -99,17 +132,17 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, priority = fa
 
           {/* Weight */}
           <span className="absolute bottom-1.5 right-1.5 bg-slate-900/90 text-slate-300 text-[10px] font-bold px-2 py-0.5 rounded-lg border border-slate-700 backdrop-blur z-10">
-            {product.weight}
+            {weight}
           </span>
         </div>
 
         {/* Title & Description */}
         <div className="space-y-1">
           <h3 className="text-xs sm:text-base font-bold text-slate-100 group-hover:text-red-400 transition-colors line-clamp-2 leading-tight">
-            {product.title}
+            {title}
           </h3>
           <p className="hidden sm:block text-xs text-slate-400 line-clamp-2 leading-relaxed">
-            {product.description}
+            {description}
           </p>
         </div>
 
@@ -146,7 +179,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, priority = fa
           <span className="text-sm sm:text-xl font-black text-slate-50">{currentPrice} ₽</span>
         </div>
 
-        {product.in_stock ? (
+        {inStock ? (
           currentQuantity > 0 ? (
             <div
               onClick={(e) => e.stopPropagation()}

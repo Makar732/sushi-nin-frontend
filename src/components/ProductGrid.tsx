@@ -14,23 +14,35 @@ interface ProductGridProps {
 export const ProductGrid: React.FC<ProductGridProps> = ({ initialProducts }) => {
   const { searchQuery, selectedCategory, activeFilter } = useStore();
 
+  const safeProducts = useMemo(
+    () => (Array.isArray(initialProducts) ? initialProducts.filter(Boolean) : []),
+    [initialProducts]
+  );
+
   const filteredProducts = useMemo(() => {
-    return initialProducts.filter((product) => {
+    return safeProducts.filter((product) => {
+      if (!product) return false;
+
+      const title = product.title || '';
+      const description = product.description || '';
+      const category = product.category || '';
+      const tags = Array.isArray(product.tags) ? product.tags : [];
+
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
-        const matchesTitle = product.title.toLowerCase().includes(query);
-        const matchesDesc = product.description.toLowerCase().includes(query);
-        const matchesCat = product.category.toLowerCase().includes(query);
+        const matchesTitle = title.toLowerCase().includes(query);
+        const matchesDesc = description.toLowerCase().includes(query);
+        const matchesCat = category.toLowerCase().includes(query);
         if (!matchesTitle && !matchesDesc && !matchesCat) return false;
       }
-      if (selectedCategory !== 'all' && product.category !== selectedCategory) return false;
-      if (activeFilter === 'hit' && !product.tags?.includes('hit')) return false;
-      if (activeFilter === 'spicy' && !product.tags?.includes('spicy')) return false;
-      if (activeFilter === 'baked' && !product.tags?.includes('baked')) return false;
-      if (activeFilter === 'nomeat' && !product.tags?.includes('nomeat')) return false;
+      if (selectedCategory !== 'all' && category !== selectedCategory) return false;
+      if (activeFilter === 'hit' && !tags.includes('hit')) return false;
+      if (activeFilter === 'spicy' && !tags.includes('spicy')) return false;
+      if (activeFilter === 'baked' && !tags.includes('baked')) return false;
+      if (activeFilter === 'nomeat' && !tags.includes('nomeat')) return false;
       return true;
     });
-  }, [initialProducts, searchQuery, selectedCategory, activeFilter]);
+  }, [safeProducts, searchQuery, selectedCategory, activeFilter]);
 
   const categorizedGroups = useMemo(() => {
     if (selectedCategory !== 'all') {
@@ -38,7 +50,7 @@ export const ProductGrid: React.FC<ProductGridProps> = ({ initialProducts }) => 
     }
     const groups: { categoryName: string; icon: string; items: Product[] }[] = [];
     CATEGORIES.forEach((cat) => {
-      const items = filteredProducts.filter((p) => p.category === cat.name);
+      const items = filteredProducts.filter((p) => (p.category || '') === cat.name);
       if (items.length > 0) {
         groups.push({ categoryName: cat.name, icon: cat.icon, items });
       }
