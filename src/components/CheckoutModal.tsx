@@ -6,7 +6,10 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import confetti from 'canvas-confetti';
-import { X, Truck, Store, CreditCard, Banknote, Smartphone, CheckCircle2, Loader2, Sparkles, Users, AlertTriangle, MapPin } from 'lucide-react';
+import {
+  X, Truck, Store, CreditCard, Banknote, Smartphone,
+  CheckCircle2, Loader2, Sparkles, Users, AlertTriangle, MapPin,
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const checkoutSchema = z.object({
@@ -26,7 +29,12 @@ type CheckoutFormData = z.infer<typeof checkoutSchema>;
 
 function formatPhone(raw: string): string {
   const digits = raw.replace(/\D/g, '');
-  const d = digits.startsWith('7') ? digits.slice(1) : digits.startsWith('8') ? digits.slice(1) : digits;
+  const d =
+    digits.startsWith('7')
+      ? digits.slice(1)
+      : digits.startsWith('8')
+      ? digits.slice(1)
+      : digits;
   let result = '+7';
   if (d.length > 0) result += ' (' + d.slice(0, 3);
   if (d.length >= 3) result += ') ' + d.slice(3, 6);
@@ -50,6 +58,11 @@ export const CheckoutModal = () => {
 
   const [isLoading, setIsLoading] = useState(false);
   const [orderSuccessId, setOrderSuccessId] = useState<string | null>(null);
+  // Суммы, подтверждённые сервером — используем их в Success Screen
+  const [serverTotal, setServerTotal] = useState<number | null>(null);
+  const [serverDelivery, setServerDelivery] = useState<number | null>(null);
+  const [serverDiscount, setServerDiscount] = useState<number | null>(null);
+
   const [storeStatus, setStoreStatus] = useState<{
     isOpen: boolean;
     openTime: string;
@@ -101,8 +114,15 @@ export const CheckoutModal = () => {
   const timeType = watch('timeType');
   const phoneValue = watch('phone');
 
-  const deliveryFee = deliveryType === 'pickup' ? 0 : (subtotal >= freeThreshold ? 0 : (district?.deliveryFee || 100));
-  const finalTotal = subtotal - discountAmount + deliveryFee;
+  const deliveryFee =
+    deliveryType === 'pickup'
+      ? 0
+      : subtotal >= freeThreshold
+      ? 0
+      : district?.deliveryFee || 100;
+
+  // Для отображения в форме (предварительный, до подтверждения сервером)
+  const estimatedTotal = subtotal - discountAmount + deliveryFee;
 
   if (!isCheckoutOpen) return null;
 
@@ -123,7 +143,6 @@ export const CheckoutModal = () => {
 
   const onSubmit = async (data: CheckoutFormData) => {
     if (isClosed) return;
-
     if (data.deliveryType === 'delivery' && !district) {
       openDistrictModal();
       return;
@@ -135,26 +154,38 @@ export const CheckoutModal = () => {
     const fullAddress =
       data.deliveryType === 'pickup'
         ? 'Самовывоз из ресторана (г. Заволжье)'
-        : `ул. ${data.street || '-'}, д. ${data.house || '-'}${data.flat ? `, кв./офис ${data.flat}` : ''}`;
+        : `ул. ${data.street || '-'}, д. ${data.house || '-'}${
+            data.flat ? `, кв./офис ${data.flat}` : ''
+          }`;
 
     const formattedTime =
       data.timeType === 'now'
         ? 'Ближайшее (30-45 мин)'
         : `К определенному времени: ${data.specificTime || 'не указано'}`;
 
+    // ── КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: отправляем ТОЛЬКО id+quantity+variant ────────────
+    // Никаких price, никакого totalAmount, никакого deliveryFee от клиента.
+    // Сервер сам вытащит актуальные цены из БД и пересчитает итог.
     const payload = {
       orderId: generatedOrderId,
-      customer: { name: data.name, phone: data.phone, comment: data.comment },
-      items: cart,
-      totalAmount: subtotal,
-      deliveryFee,
-      discount: discountAmount,
-      promoCode: appliedPromo?.code || null,
+      customer: {
+        name: data.name,
+        phone: data.phone,
+        comment: data.comment || '',
+      },
+      // ← Только id, quantity, variant. Сервер сам знает цены.
+      items: cart.map((item) => ({
+        id: item.id,
+        quantity: item.quantity,
+        variant: item.variant,
+      })),
       zone: district?.name || 'Заволжье',
       paymentMethod: data.paymentMethod,
       deliveryType: data.deliveryType,
       address: fullAddress,
       time: formattedTime,
+      promoCode: appliedPromo?.code || null,
+      // deliveryFee НЕ передаём — сервер сам считает
     };
 
     try {
@@ -166,14 +197,22 @@ export const CheckoutModal = () => {
       const json = await res.json();
 
       if (json.success) {
-        try { confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } }); } catch {}
+        try {
+          confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+        } catch {}
+
+        // Сохраняем серверные суммы для отображения
+        setServerTotal(json.totalAmount ?? estimatedTotal);
+        setServerDelivery(json.deliveryFee ?? deliveryFee);
+        setServerDiscount(json.discount ?? discountAmount);
         setOrderSuccessId(generatedOrderId);
+
         setActiveOrder({
           orderNumber: generatedOrderId,
           customerName: data.name,
           phone: data.phone,
           zone: district?.name,
-          totalAmount: finalTotal,
+          totalAmount: json.totalAmount ?? estimatedTotal,
           address: fullAddress,
           time: formattedTime,
           status: 'confirmed',
@@ -181,10 +220,12 @@ export const CheckoutModal = () => {
         });
         clearCart();
       } else {
-        alert('Ошибка при отправке заказа: ' + json.error);
+        // Показываем понятное сообщение об ошибке (например, товар кончился)
+        alert(`Ошибка: ${json.error || 'Не удалось оформить заказ'}`);
       }
-    } catch (err: any) {
-      alert('Сетевая ошибка при оформлении: ' + err.message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Неизвестная ошибка';
+      alert(`Сетевая ошибка: ${msg}. Попробуйте ещё раз или позвоните нам.`);
     } finally {
       setIsLoading(false);
     }
@@ -192,9 +233,15 @@ export const CheckoutModal = () => {
 
   const handleDone = () => {
     setOrderSuccessId(null);
+    setServerTotal(null);
+    setServerDelivery(null);
+    setServerDiscount(null);
     setCheckoutOpen(false);
     setOrderTrackerOpen(true);
   };
+
+  // Итоговая сумма для Success Screen — приоритет у серверного значения
+  const confirmedTotal = serverTotal ?? estimatedTotal;
 
   return (
     <AnimatePresence>
@@ -212,11 +259,16 @@ export const CheckoutModal = () => {
                 <Truck className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="text-xl font-black text-slate-50 tracking-tight">Оформление заказа</h2>
+                <h2 className="text-xl font-black text-slate-50 tracking-tight">
+                  Оформление заказа
+                </h2>
                 <p className="text-xs text-slate-400">«СушиНин» — Доставка еды в Заволжье</p>
               </div>
             </div>
-            <button onClick={() => setCheckoutOpen(false)} className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition">
+            <button
+              onClick={() => setCheckoutOpen(false)}
+              className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition"
+            >
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -233,7 +285,9 @@ export const CheckoutModal = () => {
                       : `🕐 Мы работаем с ${storeStatus?.openTime} до ${storeStatus?.closeTime} (МСК)`}
                   </p>
                   {storeStatus?.isManualClosed && storeStatus.manualCloseReason && (
-                    <p className="text-xs text-red-400/80 mt-1">{storeStatus.manualCloseReason}</p>
+                    <p className="text-xs text-red-400/80 mt-1">
+                      {storeStatus.manualCloseReason}
+                    </p>
                   )}
                   {!storeStatus?.isManualClosed && (
                     <p className="text-xs text-slate-400 mt-1">
@@ -279,27 +333,50 @@ export const CheckoutModal = () => {
                 <span className="text-xs font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
                   Заказ успешно принят!
                 </span>
-                <h3 className="text-3xl font-black text-white mt-3">Заказ #{orderSuccessId}</h3>
+                <h3 className="text-3xl font-black text-white mt-3">
+                  Заказ #{orderSuccessId}
+                </h3>
                 <p className="text-sm text-slate-300 max-w-md mx-auto mt-2">
-                  Мы уже передали ваш заказ на кухню! Менеджер свяжется с вами при необходимости.
+                  Мы уже передали ваш заказ на кухню! Менеджер свяжется с вами при
+                  необходимости.
                 </p>
               </div>
               <div className="p-4 bg-slate-800/80 rounded-2xl border border-slate-700 max-w-sm mx-auto text-xs text-slate-300 space-y-2 text-left">
                 <div className="flex justify-between">
                   <span className="text-slate-400">Район:</span>
-                  <span className="font-bold text-slate-100">{district?.name}</span>
+                  <span className="font-bold text-slate-100">{district?.name ?? '—'}</span>
                 </div>
-                <div className="flex justify-between">
+                {serverDiscount != null && serverDiscount > 0 && (
+                  <div className="flex justify-between text-emerald-400 font-semibold">
+                    <span>Скидка:</span>
+                    <span>-{serverDiscount} ₽</span>
+                  </div>
+                )}
+                {serverDelivery != null && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Доставка:</span>
+                    <span className="font-bold">
+                      {serverDelivery === 0 ? 'БЕСПЛАТНО' : `${serverDelivery} ₽`}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between pt-2 border-t border-slate-700">
                   <span className="text-slate-400">Сумма к оплате:</span>
-                  <span className="font-bold text-red-400 text-sm">{finalTotal} ₽</span>
+                  <span className="font-bold text-red-400 text-sm">{confirmedTotal} ₽</span>
                 </div>
               </div>
-              <button onClick={handleDone} className="px-8 py-3.5 bg-gradient-to-r from-red-600 to-red-500 text-white font-extrabold rounded-2xl shadow-lg shadow-red-500/25 hover:from-red-500 hover:to-red-600 transition">
+              <button
+                onClick={handleDone}
+                className="px-8 py-3.5 bg-gradient-to-r from-red-600 to-red-500 text-white font-extrabold rounded-2xl shadow-lg shadow-red-500/25 hover:from-red-500 hover:to-red-600 transition"
+              >
                 Отслеживать статус заказа
               </button>
             </div>
           ) : (
-            <form onSubmit={handleSubmit(onSubmit)} className="overflow-y-auto custom-scrollbar p-5 sm:p-8">
+            <form
+              onSubmit={handleSubmit(onSubmit)}
+              className="overflow-y-auto custom-scrollbar p-5 sm:p-8"
+            >
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                 {/* Left Column */}
                 <div className="lg:col-span-7 space-y-6">
@@ -309,20 +386,38 @@ export const CheckoutModal = () => {
                       1. Способ получения
                     </label>
                     <div className="grid grid-cols-2 gap-3">
-                      <button type="button" onClick={() => setValue('deliveryType', 'delivery')}
-                        className={`p-3.5 rounded-2xl border flex items-center space-x-3 transition ${deliveryType === 'delivery' ? 'bg-red-600/20 border-red-500 text-slate-100' : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'}`}>
+                      <button
+                        type="button"
+                        onClick={() => setValue('deliveryType', 'delivery')}
+                        className={`p-3.5 rounded-2xl border flex items-center space-x-3 transition ${
+                          deliveryType === 'delivery'
+                            ? 'bg-red-600/20 border-red-500 text-slate-100'
+                            : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'
+                        }`}
+                      >
                         <Truck className={deliveryType === 'delivery' ? 'text-red-400' : ''} />
                         <div className="text-left">
                           <span className="font-extrabold text-sm block">Доставка</span>
-                          <span className="text-[11px] text-slate-400">{district?.name || 'Не выбран район'}</span>
+                          <span className="text-[11px] text-slate-400">
+                            {district?.name || 'Не выбран район'}
+                          </span>
                         </div>
                       </button>
-                      <button type="button" onClick={() => setValue('deliveryType', 'pickup')}
-                        className={`p-3.5 rounded-2xl border flex items-center space-x-3 transition ${deliveryType === 'pickup' ? 'bg-red-600/20 border-red-500 text-slate-100' : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'}`}>
+                      <button
+                        type="button"
+                        onClick={() => setValue('deliveryType', 'pickup')}
+                        className={`p-3.5 rounded-2xl border flex items-center space-x-3 transition ${
+                          deliveryType === 'pickup'
+                            ? 'bg-red-600/20 border-red-500 text-slate-100'
+                            : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'
+                        }`}
+                      >
                         <Store className={deliveryType === 'pickup' ? 'text-red-400' : ''} />
                         <div className="text-left">
                           <span className="font-extrabold text-sm block">Самовывоз</span>
-                          <span className="text-[11px] text-slate-400">Скидка и бесплатно</span>
+                          <span className="text-[11px] text-slate-400">
+                            Скидка и бесплатно
+                          </span>
                         </div>
                       </button>
                     </div>
@@ -335,9 +430,16 @@ export const CheckoutModal = () => {
                     </label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <input {...register('name')} placeholder="Имя *"
-                          className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-red-500" />
-                        {errors.name && <span className="text-[11px] text-red-400 mt-1 block">{errors.name.message}</span>}
+                        <input
+                          {...register('name')}
+                          placeholder="Имя *"
+                          className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-red-500"
+                        />
+                        {errors.name && (
+                          <span className="text-[11px] text-red-400 mt-1 block">
+                            {errors.name.message}
+                          </span>
+                        )}
                       </div>
                       <div>
                         <input
@@ -351,7 +453,11 @@ export const CheckoutModal = () => {
                           maxLength={18}
                           className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-red-500 font-mono"
                         />
-                        {errors.phone && <span className="text-[11px] text-red-400 mt-1 block">{errors.phone.message}</span>}
+                        {errors.phone && (
+                          <span className="text-[11px] text-red-400 mt-1 block">
+                            {errors.phone.message}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -360,20 +466,29 @@ export const CheckoutModal = () => {
                   {deliveryType === 'delivery' && (
                     <div className="space-y-3">
                       <label className="text-xs font-extrabold uppercase tracking-wider text-slate-400 block">
-                        3. Адрес доставки {district ? `(${district.name})` : ''}
+                        3. Адрес доставки{district ? ` (${district.name})` : ''}
                       </label>
                       <div className="grid grid-cols-12 gap-3">
                         <div className="col-span-8">
-                          <input {...register('street')} placeholder="Улица *"
-                            className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-red-500" />
+                          <input
+                            {...register('street')}
+                            placeholder="Улица *"
+                            className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-red-500"
+                          />
                         </div>
                         <div className="col-span-4">
-                          <input {...register('house')} placeholder="Дом *"
-                            className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-red-500" />
+                          <input
+                            {...register('house')}
+                            placeholder="Дом *"
+                            className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-red-500"
+                          />
                         </div>
                       </div>
-                      <input {...register('flat')} placeholder="Квартира / подъезд / этаж (опционально)"
-                        className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-red-500" />
+                      <input
+                        {...register('flat')}
+                        placeholder="Квартира / подъезд / этаж (опционально)"
+                        className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-red-500"
+                      />
                     </div>
                   )}
 
@@ -383,18 +498,35 @@ export const CheckoutModal = () => {
                       4. Время доставки
                     </label>
                     <div className="grid grid-cols-2 gap-3 mb-2">
-                      <button type="button" onClick={() => setValue('timeType', 'now')}
-                        className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition ${timeType === 'now' ? 'bg-sky-500/20 border-sky-400 text-sky-300' : 'bg-slate-800/60 border-slate-700 text-slate-400'}`}>
+                      <button
+                        type="button"
+                        onClick={() => setValue('timeType', 'now')}
+                        className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition ${
+                          timeType === 'now'
+                            ? 'bg-sky-500/20 border-sky-400 text-sky-300'
+                            : 'bg-slate-800/60 border-slate-700 text-slate-400'
+                        }`}
+                      >
                         ⚡ Ближайшее (30-45 мин)
                       </button>
-                      <button type="button" onClick={() => setValue('timeType', 'specific')}
-                        className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition ${timeType === 'specific' ? 'bg-sky-500/20 border-sky-400 text-sky-300' : 'bg-slate-800/60 border-slate-700 text-slate-400'}`}>
+                      <button
+                        type="button"
+                        onClick={() => setValue('timeType', 'specific')}
+                        className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition ${
+                          timeType === 'specific'
+                            ? 'bg-sky-500/20 border-sky-400 text-sky-300'
+                            : 'bg-slate-800/60 border-slate-700 text-slate-400'
+                        }`}
+                      >
                         ⏰ К определенному времени
                       </button>
                     </div>
                     {timeType === 'specific' && (
-                      <input {...register('specificTime')} placeholder="Например: к 19:30"
-                        className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-400" />
+                      <input
+                        {...register('specificTime')}
+                        placeholder="Например: к 19:30"
+                        className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-400"
+                      />
                     )}
                   </div>
 
@@ -412,8 +544,18 @@ export const CheckoutModal = () => {
                         const Icon = method.icon;
                         const isSelected = watch('paymentMethod') === method.id;
                         return (
-                          <button key={method.id} type="button" onClick={() => setValue('paymentMethod', method.id as any)}
-                            className={`p-3 rounded-xl border text-center transition flex flex-col items-center gap-1.5 ${isSelected ? 'bg-red-600/20 border-red-500 text-slate-100 font-bold' : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'}`}>
+                          <button
+                            key={method.id}
+                            type="button"
+                            onClick={() =>
+                              setValue('paymentMethod', method.id as any)
+                            }
+                            className={`p-3 rounded-xl border text-center transition flex flex-col items-center gap-1.5 ${
+                              isSelected
+                                ? 'bg-red-600/20 border-red-500 text-slate-100 font-bold'
+                                : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'
+                            }`}
+                          >
                             <Icon className="w-4 h-4 text-red-400" />
                             <span className="text-xs">{method.id}</span>
                           </button>
@@ -424,8 +566,12 @@ export const CheckoutModal = () => {
 
                   {/* Сарафанная скидка */}
                   <div>
-                    <a href="https://t.me/sushi_nin_promo_bot" target="_blank" rel="noopener noreferrer"
-                      className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 hover:border-sky-500/60 rounded-2xl text-sky-300 font-bold text-sm transition">
+                    <a
+                      href="https://t.me/sushi_nin_promo_bot"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 hover:border-sky-500/60 rounded-2xl text-sky-300 font-bold text-sm transition"
+                    >
                       <Users className="w-4 h-4" />
                       Получить сарафанную скидку
                     </a>
@@ -436,8 +582,12 @@ export const CheckoutModal = () => {
 
                   {/* Комментарий */}
                   <div>
-                    <textarea {...register('comment')} placeholder="Комментарий к заказу (приборы, аллергии, соусы...)" rows={2}
-                      className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-red-500" />
+                    <textarea
+                      {...register('comment')}
+                      placeholder="Комментарий к заказу (приборы, аллергии, соусы...)"
+                      rows={2}
+                      className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-red-500"
+                    />
                   </div>
                 </div>
 
@@ -445,17 +595,33 @@ export const CheckoutModal = () => {
                 <div className="lg:col-span-5 bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 flex flex-col justify-between space-y-6">
                   <div>
                     <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-300 mb-4 pb-2 border-b border-slate-800 flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-red-400" /> Состав заказа ({cart.length})
+                      <Sparkles className="w-4 h-4 text-red-400" /> Состав заказа (
+                      {cart.length})
                     </h3>
                     <div className="space-y-3 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
                       {cart.map((item) => (
-                        <div key={item.id} className="flex items-center justify-between text-xs">
+                        <div
+                          key={item.id}
+                          className="flex items-center justify-between text-xs"
+                        >
                           <div className="flex items-center space-x-2 truncate pr-2">
-                            <span className="font-extrabold text-red-400">{item.quantity}×</span>
+                            <span className="font-extrabold text-red-400">
+                              {item.quantity}×
+                            </span>
                             <span className="text-slate-200 truncate">{item.title}</span>
-                            {item.variant && <span className="text-[10px] text-slate-400">({item.variant})</span>}
+                            {item.variant && (
+                              <span className="text-[10px] text-slate-400">
+                                ({item.variant})
+                              </span>
+                            )}
                           </div>
-                          <span className="font-bold text-slate-100 shrink-0">{item.price * item.quantity} ₽</span>
+                          <span className="font-bold text-slate-100 shrink-0">
+                            {item.price === 0 ? (
+                              <span className="text-amber-400">Подарок</span>
+                            ) : (
+                              `${item.price * item.quantity} ₽`
+                            )}
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -472,8 +638,14 @@ export const CheckoutModal = () => {
                         </div>
                       )}
                       <div className="flex justify-between">
-                        <span>Доставка {district ? `(${district.name})` : ''}:</span>
-                        <span className={deliveryFee === 0 ? 'text-emerald-400 font-bold' : 'font-bold'}>
+                        <span>
+                          Доставка{district ? ` (${district.name})` : ''}:
+                        </span>
+                        <span
+                          className={
+                            deliveryFee === 0 ? 'text-emerald-400 font-bold' : 'font-bold'
+                          }
+                        >
                           {deliveryType === 'pickup'
                             ? 'САМОВЫВОЗ'
                             : deliveryFee === 0
@@ -483,8 +655,13 @@ export const CheckoutModal = () => {
                       </div>
                       <div className="pt-3 border-t border-slate-800 flex justify-between items-baseline text-slate-50">
                         <span className="font-extrabold text-sm">ИТОГО К ОПЛАТЕ:</span>
-                        <span className="text-2xl font-black text-red-500">{finalTotal} ₽</span>
+                        <span className="text-2xl font-black text-red-500">
+                          {estimatedTotal} ₽
+                        </span>
                       </div>
+                      <p className="text-[10px] text-slate-500 text-right">
+                        * Итоговая сумма подтверждается сервером
+                      </p>
                     </div>
                   </div>
 
@@ -494,13 +671,22 @@ export const CheckoutModal = () => {
                     className="w-full py-4 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-600 text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-red-500/25 flex items-center justify-center space-x-2 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isLoading ? (
-                      <><Loader2 className="w-5 h-5 animate-spin" /><span>Отправляем заказ...</span></>
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        <span>Отправляем заказ...</span>
+                      </>
                     ) : isClosed ? (
-                      <><AlertTriangle className="w-5 h-5" /><span>Заведение закрыто</span></>
+                      <>
+                        <AlertTriangle className="w-5 h-5" />
+                        <span>Заведение закрыто</span>
+                      </>
                     ) : isDistrictMissing ? (
-                      <><MapPin className="w-5 h-5" /><span>Выберите район доставки</span></>
+                      <>
+                        <MapPin className="w-5 h-5" />
+                        <span>Выберите район доставки</span>
+                      </>
                     ) : (
-                      <span>Подтвердить и оплатить ({finalTotal} ₽)</span>
+                      <span>Подтвердить заказ ({estimatedTotal} ₽)</span>
                     )}
                   </button>
                 </div>

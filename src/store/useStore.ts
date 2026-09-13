@@ -22,6 +22,15 @@ export interface AppliedPromo {
   description: string;
 }
 
+// Результат синхронизации цен корзины с сервером
+export interface CartSyncResult {
+  hasChanges: boolean;
+  // Человекочитаемые сообщения об изменениях для отображения в toast
+  messages: string[];
+  // Товары, которые исчезли из меню — нужно удалить из корзины
+  removedIds: string[];
+}
+
 interface AppState {
   district: District | null;
   districts: District[];
@@ -43,6 +52,11 @@ interface AppState {
   setCheckoutOpen: (open: boolean) => void;
   applyPromoCode: (code: string, subtotal: number) => Promise<{ success: boolean; message: string }>;
   removePromoCode: () => void;
+
+  // ── Серверная синхронизация цен ──────────────────────────────────────────
+  // Вызывается при открытии корзины. Сверяет локальные цены с актуальными из БД.
+  // Обновляет цены в корзине «тихо», возвращает описание изменений для toast.
+  syncCartPrices: () => Promise<CartSyncResult>;
 
   searchQuery: string;
   selectedCategory: string;
@@ -100,9 +114,11 @@ export const useStore = create<AppState>()(
                 title: product.title,
                 variant: variant,
                 price: itemPrice,
-                weight: product.weight,
+                weight: product.weight ?? '',
                 quantity: 1,
-                image: product.imageUrl || `/images/${product.image_filename}`,
+                image:
+                  product.imageUrl ||
+                  (product.image_filename ? `/images/${product.image_filename}` : ''),
                 category: product.category,
               },
             ],
@@ -133,6 +149,91 @@ export const useStore = create<AppState>()(
       clearCart: () => set({ cart: [], appliedPromo: null }),
       setCartOpen: (open) => set({ isCartOpen: open }),
       setCheckoutOpen: (open) => set({ isCheckoutOpen: open }),
+
+      // ── syncCartPrices ────────────────────────────────────────────────────
+      syncCartPrices: async (): Promise<CartSyncResult> => {
+        const { cart } = get();
+
+        // Нечего синхронизировать
+        if (cart.length === 0) {
+          return { hasChanges: false, messages: [], removedIds: [] };
+        }
+
+        // Подарки не валидируем через API — у них всегда price = 0
+        const itemsToValidate = cart
+          .filter((item) => !item.id.startsWith('gift-'))
+          .map((item) => ({
+            id: item.id,
+            price: item.price,
+            variant: item.variant,
+          }));
+
+        if (itemsToValidate.length === 0) {
+          return { hasChanges: false, messages: [], removedIds: [] };
+        }
+
+        try {
+          const res = await fetch('/api/cart/validate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: itemsToValidate }),
+          });
+
+          if (!res.ok) {
+            console.error('[syncCartPrices] Server returned', res.status);
+            return { hasChanges: false, messages: [], removedIds: [] };
+          }
+
+          const data = await res.json();
+
+          if (!data.success || !data.hasChanges) {
+            return { hasChanges: false, messages: [], removedIds: [] };
+          }
+
+          const updates: Array<{
+            id: string;
+            title: string;
+            newPrice: number;
+            oldPrice: number;
+            inStock: boolean;
+            priceChanged: boolean;
+            stockChanged: boolean;
+          }> = data.updates ?? [];
+
+          const messages: string[] = [];
+          const removedIds: string[] = [];
+          let updatedCart = [...get().cart];
+
+          for (const update of updates) {
+            if (!update.inStock || update.newPrice === 0 && update.priceChanged === false) {
+              // Товар закончился или удалён — убираем из корзины
+              removedIds.push(update.id);
+              updatedCart = updatedCart.filter((item) => item.id !== update.id);
+              messages.push(`❌ «${update.title}» убран: товар недоступен`);
+            } else if (update.priceChanged) {
+              // Цена изменилась — обновляем в корзине
+              updatedCart = updatedCart.map((item) =>
+                item.id === update.id
+                  ? { ...item, price: update.newPrice }
+                  : item
+              );
+              const direction = update.newPrice > update.oldPrice ? '↑' : '↓';
+              messages.push(
+                `${direction} «${update.title}»: ${update.oldPrice} ₽ → ${update.newPrice} ₽`
+              );
+            }
+          }
+
+          // Применяем обновлённую корзину одним set() — атомарно
+          set({ cart: updatedCart });
+
+          return { hasChanges: true, messages, removedIds };
+        } catch (err) {
+          console.error('[syncCartPrices] Network error:', err);
+          // Сетевая ошибка — не ломаем UX, просто возвращаем "нет изменений"
+          return { hasChanges: false, messages: [], removedIds: [] };
+        }
+      },
 
       applyPromoCode: async (code, subtotal) => {
         try {

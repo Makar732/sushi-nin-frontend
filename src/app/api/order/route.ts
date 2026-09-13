@@ -1,18 +1,68 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
-import { orders, promotions } from '@/db/schema';
-import { sql, eq } from 'drizzle-orm';
+import { orders, promotions, products } from '@/db/schema';
+import { sql, eq, inArray } from 'drizzle-orm';
+import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Вспомогательная функция: отправка в Telegram
-// Намеренно НЕ делаем await в основном потоке — клиент не должен ждать Telegram.
-// Используем паттерн "fire and forget":
-//   1. Функция запускается без await
-//   2. Ошибки логируются, но не влияют на ответ клиенту
-//   3. На Vercel: передаём промис в ctx.waitUntil если доступен,
-//      иначе просто отпускаем (serverless успеет отправить до завершения процесса)
+// Zod-схема входящего запроса.
+// Клиент передаёт ТОЛЬКО id, quantity и вариант (размер пиццы).
+// НИКАКИХ цен от клиента — всё считаем на сервере по данным из БД.
+// ─────────────────────────────────────────────────────────────────────────────
+const OrderItemSchema = z.object({
+  id: z
+    .string()
+    .min(1)
+    .max(100)
+    .regex(/^[a-zA-Z0-9_\-]+$/, 'Некорректный id товара'),
+  quantity: z
+    .number()
+    .int('Количество должно быть целым числом')
+    .min(1, 'Минимальное количество: 1')
+    .max(50, 'Максимальное количество: 50'),
+  variant: z.string().max(20).optional(),
+});
+
+const OrderSchema = z.object({
+  orderId: z
+    .string()
+    .min(1)
+    .max(50)
+    .regex(/^SN-\d{6}$/, 'Некорректный формат orderId'),
+  customer: z.object({
+    name: z
+      .string()
+      .min(2, 'Имя слишком короткое')
+      .max(100)
+      .transform((v) => v.trim().replace(/[<>"'&]/g, '')),
+    phone: z
+      .string()
+      .regex(/^\+7\s\(\d{3}\)\s\d{3}-\d{2}-\d{2}$/, 'Некорректный формат телефона')
+      .max(18),
+    comment: z
+      .string()
+      .max(500)
+      .optional()
+      .transform((v) => v?.trim().replace(/[<>"'&]/g, '') ?? ''),
+  }),
+  // ← Только id+quantity+variant. Цену НЕ принимаем от клиента.
+  items: z
+    .array(OrderItemSchema)
+    .min(1, 'Корзина пуста')
+    .max(50, 'Слишком много позиций'),
+  zone: z.string().min(1).max(100).transform((v) => v.trim()),
+  paymentMethod: z.enum(['Картой курьеру', 'Наличные', 'СБП онлайн']),
+  deliveryType: z.enum(['delivery', 'pickup']),
+  address: z.string().min(1).max(300).transform((v) => v.trim()),
+  time: z.string().min(1).max(100).transform((v) => v.trim()),
+  promoCode: z.string().max(50).nullable().optional(),
+  // deliveryFee от клиента игнорируем — пересчитываем на сервере
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Telegram fire & forget
 // ─────────────────────────────────────────────────────────────────────────────
 function sendTelegramNotification(
   token: string,
@@ -36,45 +86,180 @@ function sendTelegramNotification(
       }
     })
     .catch((err) => {
-      // Не бросаем — просто логируем. Telegram недоступен = не критично для бизнес-логики.
       console.error('[Telegram] Failed to send notification:', err);
     });
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Функция пересчёта стоимости доставки на сервере.
+// Пороги зашиты здесь же — синхронизируй с delivery_zones если используешь БД.
+// ─────────────────────────────────────────────────────────────────────────────
+function calcDeliveryFee(
+  deliveryType: string,
+  zone: string,
+  subtotal: number
+): number {
+  if (deliveryType === 'pickup') return 0;
+
+  // Базовые пороги по зонам — можно вынести в отдельную таблицу позже.
+  // Главное: расчёт на СЕРВЕРЕ, клиент не влияет.
+  const zoneConfig: Record<string, { freeThreshold: number; fee: number }> = {
+    'Заволжье': { freeThreshold: 700, fee: 100 },
+    'Городец': { freeThreshold: 1500, fee: 250 },
+    'Балахна': { freeThreshold: 1500, fee: 300 },
+    'Чкаловск': { freeThreshold: 1500, fee: 350 },
+  };
+
+  const config = zoneConfig[zone] ?? { freeThreshold: 700, fee: 100 };
+  return subtotal >= config.freeThreshold ? 0 : config.fee;
+}
+
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const {
-      orderId,
-      customer,
-      items,
-      totalAmount,
-      deliveryFee,
-      zone,
-      paymentMethod,
-      deliveryType,
-      address,
-      time,
-      promoCode,
-    } = body;
+    // ── Шаг 0: Парсим и валидируем тело запроса через Zod ────────────────────
+    let rawBody: unknown;
+    try {
+      rawBody = await req.json();
+    } catch {
+      return NextResponse.json(
+        { success: false, error: 'Некорректный JSON в теле запроса' },
+        { status: 400 }
+      );
+    }
 
-    const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-    const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+    const parseResult = OrderSchema.safeParse(rawBody);
+    if (!parseResult.success) {
+      const firstError = parseResult.error.errors[0];
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Ошибка валидации: ${firstError.path.join('.')} — ${firstError.message}`,
+        },
+        { status: 400 }
+      );
+    }
 
-    const safeItems = Array.isArray(items) ? items : [];
-    const subtotalNum = Math.round(Number(totalAmount) || 0);
-    const deliveryFeeNum = Math.round(Number(deliveryFee) || 0);
+    const body = parseResult.data;
+    const { orderId, customer, items, zone, paymentMethod, deliveryType, address, time, promoCode } = body;
 
-    // ── Шаг 1: Валидация промокода ────────────────────────────────────────────
-    // Выполняется первой, так как результат нужен для расчёта финальной суммы.
-    // Это единственный обязательный последовательный запрос к БД.
+    // ── Шаг 1: Серверный пересчёт цен ────────────────────────────────────────
+    // Извлекаем productId из cartItemId (формат: "pepperoni-pizza" или "pepperoni-pizza-34 см")
+    // Подарочные товары (gift-*) имеют price = 0 и не проверяются в products.
+    const giftItems = items.filter((i) => i.id.startsWith('gift-'));
+    const regularItems = items.filter((i) => !i.id.startsWith('gift-'));
+
+    // productId хранится в id без суффикса варианта.
+    // CartItem.id = `${product.id}${variant ? `-${variant}` : ''}`
+    // Для 34см/40см пиццы: "pepperoni-pizza-34 см" → productId = "pepperoni-pizza"
+    const productIds = [
+      ...new Set(
+        regularItems.map((item) => {
+          // Суффиксы вариантов: " -34 см", " -40 см"
+          return item.id
+            .replace(/-34 см$/, '')
+            .replace(/-40 см$/, '');
+        })
+      ),
+    ];
+
+    // Запрашиваем актуальные данные из БД одним запросом
+    const dbProducts = await db
+      .select({
+        id: products.id,
+        price: products.price,
+        price40cm: products.price40cm,
+        inStock: products.inStock,
+        title: products.title,
+        hasVariants: products.hasVariants,
+      })
+      .from(products)
+      .where(inArray(products.id, productIds));
+
+    // Строим lookup-карту для O(1) доступа
+    const productMap = new Map(dbProducts.map((p) => [p.id, p]));
+
+    // ── Шаг 2: Проверка доступности товаров + серверный расчёт subtotal ──────
+    let subtotal = 0;
+    const enrichedItems: Array<{
+      id: string;
+      productId: string;
+      title: string;
+      variant?: string;
+      price: number;
+      quantity: number;
+    }> = [];
+
+    for (const item of regularItems) {
+      const productId = item.id
+        .replace(/-34 см$/, '')
+        .replace(/-40 см$/, '');
+
+      const dbProduct = productMap.get(productId);
+
+      // Товар не найден в БД — отклоняем заказ
+      if (!dbProduct) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Товар "${item.id}" не найден в меню. Обновите страницу и попробуйте снова.`,
+          },
+          { status: 400 }
+        );
+      }
+
+      // Товар не в наличии — отклоняем заказ
+      if (!dbProduct.inStock) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Товар "${dbProduct.title}" закончился. Удалите его из корзины и повторите заказ.`,
+          },
+          { status: 400 }
+        );
+      }
+
+      // Определяем актуальную цену: для пиццы 40см — price40cm
+      const is40cm = item.id.endsWith('-40 см');
+      const unitPrice =
+        is40cm && dbProduct.price40cm != null
+          ? dbProduct.price40cm
+          : dbProduct.price;
+
+      subtotal += unitPrice * item.quantity;
+
+      enrichedItems.push({
+        id: item.id,
+        productId: dbProduct.id,
+        title: dbProduct.title,
+        variant: item.variant,
+        price: unitPrice,
+        quantity: item.quantity,
+      });
+    }
+
+    // Добавляем подарочные позиции (цена = 0, не проверяем в products)
+    for (const giftItem of giftItems) {
+      enrichedItems.push({
+        id: giftItem.id,
+        productId: giftItem.id,
+        title: giftItem.id,
+        variant: undefined,
+        price: 0,
+        quantity: giftItem.quantity,
+      });
+    }
+
+    // ── Шаг 3: Серверный расчёт доставки ─────────────────────────────────────
+    const deliveryFeeNum = calcDeliveryFee(deliveryType, zone, subtotal);
+
+    // ── Шаг 4: Серверная валидация промокода ──────────────────────────────────
     let discountNum = 0;
     let validPromoId: string | null = null;
     let validPromoCode: string | null = null;
 
     if (promoCode) {
       try {
-        const normalizedCode = String(promoCode).trim().toUpperCase();
+        const normalizedCode = promoCode.trim().toUpperCase();
         const [promo] = await db
           .select()
           .from(promotions)
@@ -85,12 +270,12 @@ export async function POST(req: Request) {
           promo &&
           promo.active &&
           (promo.usageLimit === 0 || promo.usedCount < promo.usageLimit) &&
-          subtotalNum >= promo.minAmount
+          subtotal >= promo.minAmount
         ) {
           discountNum =
             promo.discountType === 'fixed'
-              ? Math.min(promo.discountValue, subtotalNum)
-              : Math.round((subtotalNum * promo.discountValue) / 100);
+              ? Math.min(promo.discountValue, subtotal)
+              : Math.round((subtotal * promo.discountValue) / 100);
           validPromoId = promo.id;
           validPromoCode = promo.code;
         }
@@ -99,12 +284,22 @@ export async function POST(req: Request) {
       }
     }
 
-    const finalPay = subtotalNum + deliveryFeeNum - discountNum;
+    // ── Шаг 5: Финальная сумма — только на сервере ───────────────────────────
+    const finalPay = subtotal + deliveryFeeNum - discountNum;
 
-    // ── Шаг 2: INSERT заказа + UPDATE промокода параллельно ───────────────────
-    // Два независимых запроса к БД — запускаем одновременно через Promise.all.
-    // Экономия: ~150–300ms (время одного лишнего round-trip к Supabase Ireland).
-    const itemsJson = JSON.stringify(safeItems);
+    const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+    const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+
+    // ── Шаг 6: INSERT заказа + UPDATE промокода параллельно ───────────────────
+    const itemsForDb = enrichedItems.map((i) => ({
+      id: i.id,
+      productId: i.productId,
+      title: i.title,
+      variant: i.variant,
+      price: i.price,
+      quantity: i.quantity,
+    }));
+    const itemsJson = JSON.stringify(itemsForDb);
 
     const insertOrderPromise = db.execute(
       sql`INSERT INTO "orders" (
@@ -114,20 +309,20 @@ export async function POST(req: Request) {
             "discount", "total_amount", "status", "comment", "promo_code"
           ) VALUES (
             ${String(orderId)},
-            ${customer?.name || 'Покупатель'},
-            ${customer?.phone || ''},
-            ${String(zone || 'Заволжье')},
-            ${String(deliveryType || 'delivery')},
-            ${String(address || 'Самовывоз')},
-            ${String(time || 'Ближайшее')},
-            ${String(paymentMethod || 'Картой курьеру')},
+            ${customer.name},
+            ${customer.phone},
+            ${zone},
+            ${deliveryType},
+            ${address},
+            ${time},
+            ${paymentMethod},
             ${itemsJson}::jsonb,
-            ${subtotalNum},
+            ${subtotal},
             ${deliveryFeeNum},
             ${discountNum},
             ${finalPay},
             'new',
-            ${customer?.comment || ''},
+            ${customer.comment ?? ''},
             ${validPromoCode}
           )`
     );
@@ -139,7 +334,6 @@ export async function POST(req: Request) {
           .where(eq(promotions.id, validPromoId))
       : Promise.resolve();
 
-    // Ждём оба запроса параллельно — если один упадёт, логируем, не роняем всё
     const [insertResult, updateResult] = await Promise.allSettled([
       insertOrderPromise,
       updatePromoPromise,
@@ -147,7 +341,6 @@ export async function POST(req: Request) {
 
     if (insertResult.status === 'rejected') {
       console.error('[Order] Failed to save order to DB:', insertResult.reason);
-      // Критическая ошибка — заказ не сохранён, сообщаем клиенту
       return NextResponse.json(
         { success: false, error: 'Не удалось сохранить заказ. Позвоните нам напрямую.' },
         { status: 500 }
@@ -155,50 +348,49 @@ export async function POST(req: Request) {
     }
 
     if (updateResult.status === 'rejected') {
-      // Некритично: заказ уже сохранён, просто промокод не инкрементировался
       console.error('[Order] Failed to increment promo usage:', updateResult.reason);
     }
 
-    // ── Шаг 3: Telegram — fire and forget ────────────────────────────────────
-    // НЕ делаем await — клиент получает ответ немедленно после сохранения в БД.
-    // Telegram уведомление улетает в фоне асинхронно.
-    // На Vercel Serverless: процесс живёт достаточно долго после отправки Response,
-    // чтобы fetch успел завершиться (обычно Telegram отвечает за 200–500ms).
+    // ── Шаг 7: Telegram — fire and forget ────────────────────────────────────
     if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
-      const itemsList = safeItems
+      const itemsList = enrichedItems
         .map(
-          (item: any) =>
-            `• ${item.title}${item.variant ? ` (${item.variant})` : ''} × ${item.quantity} — ${item.price * item.quantity} ₽`
+          (item) =>
+            `• ${item.title}${item.variant ? ` (${item.variant})` : ''} × ${item.quantity} — ${
+              item.price === 0 ? 'ПОДАРОК' : `${item.price * item.quantity} ₽`
+            }`
         )
         .join('\n');
 
       const message = `
 <b>🚨 НОВЫЙ ЗАКАЗ #${orderId}</b>
 
-<b>👤 Клиент:</b> ${customer?.name || 'Покупатель'} (${customer?.phone || ''})
+<b>👤 Клиент:</b> ${customer.name} (${customer.phone})
 <b>📍 Район/Зона:</b> ${zone}
 <b>🚗 Тип:</b> ${deliveryType === 'delivery' ? 'Доставка' : 'Самовывоз'}
 <b>🏠 Адрес:</b> ${address}
 <b>🕒 Время:</b> ${time}
-<b>💳 Оплата:</b> ${paymentMethod}${customer?.comment ? `\n<b>💬 Комментарий:</b> ${customer.comment}` : ''}
+<b>💳 Оплата:</b> ${paymentMethod}${customer.comment ? `\n<b>💬 Комментарий:</b> ${customer.comment}` : ''}
 
 <b>📦 Состав заказа:</b>
 ${itemsList}
 
+<b>🧾 Подытог:</b> ${subtotal} ₽
 <b>🚚 Доставка:</b> ${deliveryFeeNum === 0 ? 'БЕСПЛАТНО' : `${deliveryFeeNum} ₽`}${validPromoCode ? `\n<b>🏷️ Промокод:</b> ${validPromoCode} (-${discountNum} ₽)` : ''}
 <b>💰 ИТОГО К ОПЛАТЕ: ${finalPay} ₽</b>
       `.trim();
 
-      // Запускаем без await — ответ клиенту уже не зависит от Telegram
       sendTelegramNotification(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, message);
     }
 
-    // ── Шаг 4: Мгновенный ответ клиенту ──────────────────────────────────────
-    // Клиент получает ответ сразу после сохранения в БД,
-    // не дожидаясь ответа от Telegram API.
+    // ── Шаг 8: Ответ клиенту с серверными суммами ────────────────────────────
+    // Возвращаем finalPay, subtotal, deliveryFee от сервера —
+    // клиент должен использовать именно эти значения для отображения.
     return NextResponse.json({
       success: true,
       orderId,
+      subtotal,
+      deliveryFee: deliveryFeeNum,
       discount: discountNum,
       totalAmount: finalPay,
     });
