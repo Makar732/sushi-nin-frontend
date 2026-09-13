@@ -6,6 +6,83 @@ import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// RATE LIMITING (in-memory, без внешних зависимостей)
+// Ограничение: не более 3 заказов с одного IP за 10 минут.
+//
+// ВАЖНО про serverless: на Vercel каждый холодный старт может создать новый
+// процесс с чистой памятью — в таком случае лимит частично "плавает" между
+// инстансами. Но пока функция "тёплая" (частые запросы поддерживают её живой),
+// защита работает корректно и эффективно останавливает спам-скрипты.
+// Для железной защиты в масштабе — Upstash Redis, но по ТЗ используем Map.
+// ─────────────────────────────────────────────────────────────────────────────
+const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000; // 10 минут
+const RATE_LIMIT_MAX_REQUESTS = 3;
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // чистим устаревшие записи раз в 5 минут
+
+// Храним состояние в globalThis, чтобы пережить hot-reload в dev
+// и переиспользовать один и тот же Map между вызовами в рамках
+// одного тёплого serverless-инстанса.
+const globalForRateLimit = globalThis as typeof globalThis & {
+  __orderRateLimitMap?: Map<string, number[]>;
+  __orderRateLimitLastCleanup?: number;
+};
+
+const rateLimitMap: Map<string, number[]> =
+  globalForRateLimit.__orderRateLimitMap ?? new Map();
+globalForRateLimit.__orderRateLimitMap = rateLimitMap;
+
+function cleanupRateLimitMap(now: number): void {
+  const lastCleanup = globalForRateLimit.__orderRateLimitLastCleanup ?? 0;
+  if (now - lastCleanup < CLEANUP_INTERVAL_MS) return;
+
+  globalForRateLimit.__orderRateLimitLastCleanup = now;
+
+  for (const [ip, timestamps] of rateLimitMap.entries()) {
+    const filtered = timestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+    if (filtered.length === 0) {
+      rateLimitMap.delete(ip);
+    } else {
+      rateLimitMap.set(ip, filtered);
+    }
+  }
+}
+
+function checkRateLimit(ip: string): { allowed: boolean; retryAfterSeconds?: number } {
+  const now = Date.now();
+  cleanupRateLimitMap(now);
+
+  const timestamps = rateLimitMap.get(ip) ?? [];
+  const recentTimestamps = timestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+
+  if (recentTimestamps.length >= RATE_LIMIT_MAX_REQUESTS) {
+    const oldestRelevant = recentTimestamps[0];
+    const retryAfterMs = RATE_LIMIT_WINDOW_MS - (now - oldestRelevant);
+    return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil(retryAfterMs / 1000)) };
+  }
+
+  recentTimestamps.push(now);
+  rateLimitMap.set(ip, recentTimestamps);
+  return { allowed: true };
+}
+
+function getClientIp(req: Request): string {
+  // Vercel/прокси передают реальный IP клиента в x-forwarded-for
+  // (может быть список через запятую: "client, proxy1, proxy2" — берём первый)
+  const forwardedFor = req.headers.get('x-forwarded-for');
+  if (forwardedFor) {
+    return forwardedFor.split(',')[0].trim();
+  }
+  const realIp = req.headers.get('x-real-ip');
+  if (realIp) return realIp.trim();
+  return 'unknown-ip';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Zod-валидация входящего запроса.
+// Клиент передаёт ТОЛЬКО id, quantity и вариант (размер пиццы).
+// НИКАКИХ цен от клиента — всё считаем на сервере по данным из БД.
+// ─────────────────────────────────────────────────────────────────────────────
 const OrderItemSchema = z.object({
   id: z
     .string()
@@ -54,6 +131,9 @@ const OrderSchema = z.object({
   promoCode: z.string().max(50).nullable().optional(),
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Telegram fire & forget
+// ─────────────────────────────────────────────────────────────────────────────
 function sendTelegramNotification(
   token: string,
   chatId: string,
@@ -88,10 +168,10 @@ function calcDeliveryFee(
   if (deliveryType === 'pickup') return 0;
 
   const zoneConfig: Record<string, { freeThreshold: number; fee: number }> = {
-    'Заволжье':  { freeThreshold: 700,  fee: 100 },
-    'Городец':   { freeThreshold: 1500, fee: 250 },
-    'Балахна':   { freeThreshold: 1500, fee: 300 },
-    'Чкаловск':  { freeThreshold: 1500, fee: 350 },
+    'Заволжье': { freeThreshold: 700, fee: 100 },
+    'Городец': { freeThreshold: 1500, fee: 250 },
+    'Балахна': { freeThreshold: 1500, fee: 300 },
+    'Чкаловск': { freeThreshold: 1500, fee: 350 },
   };
 
   const config = zoneConfig[zone] ?? { freeThreshold: 700, fee: 100 };
@@ -100,6 +180,26 @@ function calcDeliveryFee(
 
 export async function POST(req: Request) {
   try {
+    // ── Шаг -1: Rate Limiting — проверяем ДО парсинга тела запроса ───────────
+    // Это самая дешёвая проверка — блокируем спам-запросы до того, как
+    // тратим ресурсы на JSON.parse, Zod-валидацию и обращения к БД.
+    const clientIp = getClientIp(req);
+    const rateLimitResult = checkRateLimit(clientIp);
+
+    if (!rateLimitResult.allowed) {
+      console.warn(`[Order] Rate limit exceeded for IP: ${clientIp}`);
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Слишком много заказов с вашего устройства. Попробуйте снова через ${rateLimitResult.retryAfterSeconds} сек.`,
+        },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(rateLimitResult.retryAfterSeconds) },
+        }
+      );
+    }
+
     // ── Шаг 0: Парсим и валидируем тело запроса через Zod ────────────────────
     let rawBody: unknown;
     try {
@@ -113,12 +213,9 @@ export async function POST(req: Request) {
 
     const parseResult = OrderSchema.safeParse(rawBody);
     if (!parseResult.success) {
-      // ✅ ФИКС: Zod v3 хранит ошибки в .issues, не в .errors
-      // parseResult.error — это ZodError, у которого есть .issues[]
-      // и .flatten() для удобного форматирования
       const firstIssue = parseResult.error.issues[0];
       const errorPath = firstIssue?.path?.join('.') ?? 'unknown';
-      const errorMsg  = firstIssue?.message ?? 'Ошибка валидации';
+      const errorMsg = firstIssue?.message ?? 'Ошибка валидации';
       return NextResponse.json(
         {
           success: false,
@@ -142,7 +239,7 @@ export async function POST(req: Request) {
     } = body;
 
     // ── Шаг 1: Серверный пересчёт цен ────────────────────────────────────────
-    const giftItems   = items.filter((i) => i.id.startsWith('gift-'));
+    const giftItems = items.filter((i) => i.id.startsWith('gift-'));
     const regularItems = items.filter((i) => !i.id.startsWith('gift-'));
 
     const productIds = [
@@ -156,11 +253,11 @@ export async function POST(req: Request) {
     const dbProducts = productIds.length > 0
       ? await db
           .select({
-            id:          products.id,
-            price:       products.price,
-            price40cm:   products.price40cm,
-            inStock:     products.inStock,
-            title:       products.title,
+            id: products.id,
+            price: products.price,
+            price40cm: products.price40cm,
+            inStock: products.inStock,
+            title: products.title,
             hasVariants: products.hasVariants,
           })
           .from(products)
@@ -217,24 +314,23 @@ export async function POST(req: Request) {
       subtotal += unitPrice * item.quantity;
 
       enrichedItems.push({
-        id:        item.id,
+        id: item.id,
         productId: dbProduct.id,
-        title:     dbProduct.title,
-        variant:   item.variant,
-        price:     unitPrice,
-        quantity:  item.quantity,
+        title: dbProduct.title,
+        variant: item.variant,
+        price: unitPrice,
+        quantity: item.quantity,
       });
     }
 
-    // Подарочные позиции (price = 0)
     for (const giftItem of giftItems) {
       enrichedItems.push({
-        id:        giftItem.id,
+        id: giftItem.id,
         productId: giftItem.id,
-        title:     giftItem.id,
-        variant:   undefined,
-        price:     0,
-        quantity:  giftItem.quantity,
+        title: giftItem.id,
+        variant: undefined,
+        price: 0,
+        quantity: giftItem.quantity,
       });
     }
 
@@ -242,8 +338,8 @@ export async function POST(req: Request) {
     const deliveryFeeNum = calcDeliveryFee(deliveryType, zone, subtotal);
 
     // ── Шаг 4: Серверная валидация промокода ──────────────────────────────────
-    let discountNum   = 0;
-    let validPromoId: string | null   = null;
+    let discountNum = 0;
+    let validPromoId: string | null = null;
     let validPromoCode: string | null = null;
 
     if (promoCode) {
@@ -265,7 +361,7 @@ export async function POST(req: Request) {
             promo.discountType === 'fixed'
               ? Math.min(promo.discountValue, subtotal)
               : Math.round((subtotal * promo.discountValue) / 100);
-          validPromoId   = promo.id;
+          validPromoId = promo.id;
           validPromoCode = promo.code;
         }
       } catch (promoErr) {
@@ -277,16 +373,16 @@ export async function POST(req: Request) {
     const finalPay = subtotal + deliveryFeeNum - discountNum;
 
     const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-    const TELEGRAM_CHAT_ID   = process.env.TELEGRAM_CHAT_ID;
+    const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
     // ── Шаг 6: INSERT заказа + UPDATE промокода параллельно ───────────────────
     const itemsForDb = enrichedItems.map((i) => ({
-      id:        i.id,
+      id: i.id,
       productId: i.productId,
-      title:     i.title,
-      variant:   i.variant,
-      price:     i.price,
-      quantity:  i.quantity,
+      title: i.title,
+      variant: i.variant,
+      price: i.price,
+      quantity: i.quantity,
     }));
     const itemsJson = JSON.stringify(itemsForDb);
 
@@ -374,11 +470,11 @@ ${itemsList}
 
     // ── Шаг 8: Ответ клиенту с серверными суммами ────────────────────────────
     return NextResponse.json({
-      success:     true,
+      success: true,
       orderId,
       subtotal,
       deliveryFee: deliveryFeeNum,
-      discount:    discountNum,
+      discount: discountNum,
       totalAmount: finalPay,
     });
   } catch (error: unknown) {
